@@ -1,0 +1,2 @@
+{ "name": "ccs-vsn30", "version": "1.0.0", "private": true, "description": "CCS VSN30 Group Savings and Management System", "scripts": { "build": "echo "CCS VSN30 web application ready for Capacitor"" }, "dependencies": { "@capacitor/android": "^7.4.3", "@capacitor/core": "^7.4.3" }, "devDependencies": { "@capacitor/cli": "^7.4.3" } }
+
