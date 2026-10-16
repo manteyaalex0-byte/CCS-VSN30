@@ -1,0 +1,1670 @@
+<!DOCTYPE html>  <html lang="en">  <head>  <meta charset="UTF-8">  
+
+<meta  
+    name="viewport"  
+    content="width=device-width, initial-scale=1.0"  
+>  
+<link rel="manifest" href="./manifest.json">
+
+<meta name="theme-color" content="#071b49">
+
+<meta
+  name="apple-mobile-web-app-capable"
+  content="yes"
+>
+<title>CCS VSN30</title>  
+
+<link  
+    rel="stylesheet"  
+    href="style.css"  
+>
+
+</head>  <body>  <!-- ========================================  
+     HEADER  
+========================================= -->  
+
+<header class="app-header">  
+
+    <h1>CCS VSN30</h1>  
+
+    <p>  
+        Group Savings & Management System  
+    </p>  
+
+</header>  
+
+
+<!-- ========================================  
+     WELCOME SCREEN  
+========================================= -->  
+
+<section  
+    id="welcomeScreen"  
+    class="screen active"  
+>  
+
+    <div class="welcome-card">  
+
+        <div class="logo-circle">  
+            CCS  
+        </div>  
+
+        <h2>  
+            Welcome to CCS VSN30  
+        </h2>  
+
+        <p>  
+            Manage contributions, members,  
+            withdrawals, voting, reports and  
+            group communication in one place.  
+        </p>  
+
+        <button  
+            type="button"  
+            onclick="showScreen('signupScreen')"  
+        >  
+            Create Account  
+        </button>  
+
+        <button  
+            type="button"  
+            class="secondary"  
+            onclick="showScreen('loginScreen')"  
+        >  
+            Login  
+        </button>  
+
+    </div>  
+
+</section>  
+
+
+<!-- ========================================  
+     SIGN UP SCREEN  
+========================================= -->  
+
+<section  
+    id="signupScreen"  
+    class="screen"  
+>  
+
+    <div class="form-card">  
+
+        <h2>  
+            Create Account  
+        </h2>  
+
+        <p class="step-text">  
+            Step 1 of 4 — Enter your registration details  
+        </p>  
+
+        <label for="fullName">  
+            Full Name  
+        </label>  
+
+        <input  
+            type="text"  
+            id="fullName"  
+            placeholder="Enter your full name"  
+            autocomplete="name"  
+        >  
+
+        <label for="phone">  
+            Phone Number  
+        </label>  
+
+        <input  
+            type="tel"  
+            id="phone"  
+            placeholder="07XXXXXXXX"  
+            autocomplete="tel"  
+        >  
+
+        <label for="email">  
+            Email Address  
+        </label>  
+
+        <input  
+            type="email"  
+            id="email"  
+            placeholder="Enter your email"  
+            autocomplete="email"  
+        >  
+
+        <label for="password">  
+            Password  
+        </label>  
+
+        <input  
+            type="password"  
+            id="password"  
+            placeholder="Create a password"  
+            autocomplete="new-password"  
+        >  
+
+        <label for="confirmPassword">  
+            Confirm Password  
+        </label>  
+
+        <input  
+            type="password"  
+            id="confirmPassword"  
+            placeholder="Confirm your password"  
+            autocomplete="new-password"  
+        >  
+
+        <label for="role">  
+            Account Role  
+        </label>  
+
+        <select id="role">  
+
+            <option value="">  
+                Select your role  
+            </option>  
+
+            <option value="Member">  
+                Member  
+            </option>  
+
+            <option value="Secretary">  
+                Secretary  
+            </option>  
+
+        </select>  
+
+        <button  
+            type="button"  
+            onclick="goToSubscription()"  
+        >  
+            Continue to Subscription  
+        </button>  
+<div
+    id="signupStatus"
+    class="status-message"
+></div>
+        <button  
+            type="button"  
+            class="secondary"  
+            onclick="showScreen('welcomeScreen')"  
+        >  
+            Back  
+        </button>  
+
+    </div>  
+
+</section>  
+
+
+<!-- ========================================  
+     SUBSCRIPTION SCREEN  
+========================================= -->  
+
+<section  
+    id="subscriptionScreen"  
+    class="screen"  
+>  
+
+    <div class="payment-card">  
+
+        <div class="payment-icon">  
+            M-PESA  
+        </div>  
+
+        <h2>  
+            Subscription Payment  
+        </h2>  
+
+        <p>  
+            Your account will only be created after  
+            the subscription payment has been  
+            successfully verified.  
+        </p>  
+
+        <div class="amount-box">  
+
+            <span>  
+                Registration / Subscription Fee  
+            </span>  
+
+            <strong>  
+                KSh 100  
+            </strong>  
+
+        </div>  
+
+        <label for="mpesaPhone">  
+            M-PESA Phone Number  
+        </label>  
+
+        <input  
+            type="tel"  
+            id="mpesaPhone"  
+            placeholder="07XXXXXXXX"  
+            autocomplete="tel"  
+        >  
+
+        <button  
+            type="button"  
+            onclick="startPayment()"  
+        >  
+            Pay with M-PESA  
+        </button>  
+
+        <div  
+            id="paymentStatus"  
+            class="status-message"  
+        >  
+        </div>  
+
+        <button  
+            type="button"  
+            class="secondary"  
+            onclick="showScreen('signupScreen')"  
+        >  
+            Back  
+        </button>  
+
+    </div>  
+
+</section>  
+
+
+<!-- ========================================  
+     OTP VERIFICATION SCREEN  
+========================================= -->  
+
+<section  
+    id="otpScreen"  
+    class="screen"  
+>  
+
+    <div class="form-card">  
+
+        <div class="verification-icon">  
+            ✓  
+        </div>  
+
+        <h2>  
+            Verify Your Account  
+        </h2>  
+
+        <p>  
+            Your payment was successful.  
+            Enter the 6-digit OTP sent to your  
+            registered phone number.  
+        </p>  
+
+        <label for="otp">  
+            Verification Code  
+        </label>  
+
+        <input  
+            type="text"  
+            id="otp"  
+            class="otp-input"  
+            maxlength="6"  
+            inputmode="numeric"  
+            placeholder="000000"  
+            autocomplete="one-time-code"  
+        >  
+
+        <button  
+            type="button"  
+            onclick="verifyOTP()"  
+        >  
+            Verify OTP  
+        </button>  
+
+        <div  
+            id="otpStatus"  
+            class="status-message"  
+        >  
+        </div>  
+
+    </div>  
+
+</section>  
+
+
+<!-- ========================================  
+     LOGIN SCREEN  
+========================================= -->  
+
+<section  
+    id="loginScreen"  
+    class="screen"  
+>  
+
+    <div class="form-card">  
+
+        <h2>  
+            Login  
+        </h2>  
+
+        <p>  
+            Login to your CCS VSN30 account.  
+        </p>  
+
+        <label for="loginPhone">  
+            Phone Number  
+        </label>  
+
+        <input  
+            type="tel"  
+            id="loginPhone"  
+            placeholder="07XXXXXXXX"  
+            autocomplete="tel"  
+        >  
+
+        <label for="loginPassword">  
+            Password  
+        </label>  
+
+        <input  
+            type="password"  
+            id="loginPassword"  
+            placeholder="Enter your password"  
+            autocomplete="current-password"  
+        >  
+
+        <button  
+            type="button"  
+            onclick="loginUser()"  
+        >  
+            Login  
+        </button>  
+
+        <button  
+            type="button"  
+            class="text-button"  
+            onclick="showScreen('forgotPasswordScreen')"  
+        >  
+            Forgot Password?  
+        </button>  
+
+        <div  
+            id="loginStatus"  
+            class="status-message"  
+        >  
+        </div>  
+
+        <button  
+            type="button"  
+            class="secondary"  
+            onclick="showScreen('welcomeScreen')"  
+        >  
+            Back  
+        </button>  
+
+    </div>  
+
+</section>  
+
+
+<!-- ========================================  
+     FORGOT PASSWORD SCREEN  
+========================================= -->  
+
+<section  
+    id="forgotPasswordScreen"  
+    class="screen"  
+>  
+
+    <div class="form-card">  
+
+        <h2>  
+            Forgot Password?  
+        </h2>  
+
+        <p>  
+            Enter the phone number or email  
+            address registered with your  
+            CCS VSN30 account.  
+        </p>  
+
+        <label for="forgotIdentifier">  
+            Phone Number or Email  
+        </label>  
+
+        <input  
+            type="text"  
+            id="forgotIdentifier"  
+            placeholder="Phone number or email"  
+            autocomplete="email"  
+        >  
+
+        <button  
+            type="button"  
+            onclick="requestPasswordReset()"  
+        >  
+            Send OTP  
+        </button>  
+
+        <div  
+            id="forgotPasswordStatus"  
+            class="status-message"  
+        >  
+        </div>  
+
+        <button  
+            type="button"  
+            class="secondary"  
+            onclick="showScreen('loginScreen')"  
+        >  
+            Back to Login  
+        </button>  
+
+    </div>  
+
+</section>  
+
+
+<!-- ========================================  
+     RESET PASSWORD SCREEN  
+========================================= -->  
+
+<section  
+    id="resetPasswordScreen"  
+    class="screen"  
+>  
+
+    <div class="form-card">  
+
+        <h2>  
+            Reset Password  
+        </h2>  
+
+        <p>  
+            Enter the OTP you received and  
+            create a new password.  
+        </p>  
+
+        <label for="resetOTP">  
+            OTP Code  
+        </label>  
+
+        <input  
+            type="text"  
+            id="resetOTP"  
+            class="otp-input"  
+            maxlength="6"  
+            inputmode="numeric"  
+            placeholder="000000"  
+            autocomplete="one-time-code"  
+        >  
+
+        <label for="newPassword">  
+            New Password  
+        </label>  
+
+        <input  
+            type="password"  
+            id="newPassword"  
+            placeholder="Enter new password"  
+            autocomplete="new-password"  
+        >  
+
+        <label for="confirmNewPassword">  
+            Confirm New Password  
+        </label>  
+
+        <input  
+            type="password"  
+            id="confirmNewPassword"  
+            placeholder="Confirm new password"  
+            autocomplete="new-password"  
+        >  
+
+        <button  
+            type="button"  
+            onclick="resetPassword()"  
+        >  
+            Reset Password  
+        </button>  
+
+        <div  
+            id="resetPasswordStatus"  
+            class="status-message"  
+        >  
+        </div>  
+
+    </div>  
+
+</section>  
+
+
+<!-- ========================================  
+     DASHBOARD SCREEN  
+========================================= -->  
+
+<section  
+    id="dashboardScreen"  
+    class="screen"  
+>  
+
+    <div class="dashboard">  
+
+        <h2>  
+            Welcome,  
+            <span id="dashboardName">  
+                Member  
+            </span>  
+        </h2>  
+
+        <p id="dashboardRole">  
+            Role: Member  
+        </p>  
+
+
+        <!-- ====================================  
+             TOTAL CONTRIBUTIONS  
+        ===================================== -->  
+
+        <div class="dashboard-card total-balance-card">  
+
+            <h3>  
+                Total Contributions  
+            </h3>  
+
+            <div  
+                id="totalContributed"  
+                class="balance-amount"  
+            >  
+                KES 0  
+            </div>  
+
+            <p>  
+                Total amount paid by members.  
+            </p>  
+
+        </div>  
+
+
+        <!-- ====================================  
+             ACTIVE MEMBERS  
+        ===================================== -->  
+
+        <div class="dashboard-card">  
+
+            <h3>  
+                Active Members  
+            </h3>  
+
+            <div  
+                id="activeMembers"  
+                class="balance-amount"  
+            >  
+                0  
+            </div>  
+
+            <p>  
+                Number of active group members.  
+            </p>  
+
+        </div>  
+
+      <!-- ========================================
+     ANNOUNCEMENTS & NOTIFICATIONS
+========================================= --><div id="announcementsPanel" class="dashboard-card feature-panel"><h3>
+    📢 Announcements & Notifications
+    <span id="unreadAnnouncementCount" class="notification-badge">0</span>
+</h3>
+
+<p>
+    Important notices, contribution updates,
+    meetings and other group announcements.
+</p>
+
+<!-- Admin-only announcement form -->
+
+<div id="announcementAdminForm" style="display:none;">
+
+    <h4>Publish an Announcement</h4>
+
+    <label for="announcementCategory">
+        Announcement Category
+    </label>
+
+    <select id="announcementCategory">
+        <option value="Important Notice">Important Notice</option>
+        <option value="Contributions">Contributions</option>
+        <option value="Meetings">Meetings</option>
+        <option value="Withdrawals">Withdrawals</option>
+        <option value="General Update">General Update</option>
+    </select>
+
+    <label for="announcementTitle">
+        Announcement Title
+    </label>
+
+    <input
+        type="text"
+        id="announcementTitle"
+        maxlength="150"
+        placeholder="Enter announcement headline"
+    >
+
+    <label for="announcementBody">
+        Announcement Message
+    </label>
+
+    <textarea
+        id="announcementBody"
+        maxlength="5000"
+        rows="4"
+        placeholder="Write the announcement..."
+    ></textarea>
+
+    <button
+        type="button"
+        onclick="publishAnnouncement()"
+    >
+        Publish Announcement
+    </button>
+
+    <div
+        id="announcementPublishStatus"
+        class="status-message"
+        aria-live="polite"
+    ></div>
+
+</div>
+
+<hr>
+
+<h4>Latest Announcements</h4>
+
+<div id="announcementsList" aria-live="polite">
+    <p>Log in to view announcements.</p>
+</div>
+
+<button
+    type="button"
+    class="secondary"
+    onclick="loadAnnouncements()"
+>
+    Refresh Announcements
+</button>
+
+</div><!-- END ANNOUNCEMENTS & NOTIFICATIONS -->
+        <!-- ====================================  
+             DASHBOARD GRID  
+        ===================================== -->  
+
+         <div class="dashboard-grid">
+
+
+            <!-- CONTRIBUTIONS -->  
+
+            <div class="dashboard-card">  
+
+                <h3>  
+                    Contributions  
+                </h3>  
+
+                <p>  
+                    View contributions, balances  
+                    and payment history.  
+                </p>  
+
+            </div>  
+
+
+            <!-- WITHDRAWALS -->  
+
+            <div class="dashboard-card">  
+
+                <h3>  
+                    Withdrawals  
+                </h3>  
+
+                <p>  
+                    Manage withdrawal requests  
+                    and approval progress.  
+                </p>  
+
+            </div>  
+
+
+            <!-- VOTING -->  
+
+            <div class="dashboard-card">  
+
+                <h3>  
+                    Voting  
+                </h3>  
+
+                <p>  
+                    Participate in group  
+                    withdrawal voting.  
+                </p>  
+
+            </div>  
+
+
+            <!-- GROUP CHAT -->  
+
+            <div class="dashboard-card">  
+
+                <h3>  
+                    Group Chat  
+                </h3>  
+
+                <p>  
+                    Communicate with other  
+                    CCS VSN30 members.  
+                </p>  
+
+            </div>  
+
+
+            <!-- REPORTS -->  
+
+            <div class="dashboard-card">  
+
+                <h3>  
+                    Reports  
+                </h3>  
+
+                <p>  
+                    View group financial  
+                    reports and records.  
+                </p>  
+
+            </div>  
+
+
+            <!-- MEMBERS -->  
+
+            <div class="dashboard-card">  
+
+                <h3>  
+                    Members  
+                </h3>  
+
+                <p>  
+                    View active group members  
+                    and membership information.  
+                </p>  
+
+            </div>  
+        <!-- ====================================
+     ADMIN
+===================================== -->
+
+<div
+    id="adminCard"
+    class="dashboard-card"
+    style="display: none;"
+>
+
+    <h3>
+        Admin
+    </h3>
+
+    <p>
+        Manage members, contributions,
+        withdrawals and voting records.
+    </p>
+
+    <button
+        type="button"
+        onclick="openAdminPanel()"
+    >
+        Open Admin Dashboard
+    </button>
+
+</div>
+
+            
+
+                </div>
+        <!-- ====================================
+     CONTRIBUTION PAYMENT PANEL
+===================================== -->
+
+<div
+    id="contributionPanel"
+    class="dashboard-card"
+>
+
+    <h3>
+        Make Contribution
+    </h3>
+
+    <p>
+        Enter your contribution amount and
+        choose your payment method.
+    </p>
+
+    <label for="contributionAmount">
+        Contribution Amount
+    </label>
+
+    <input
+        type="number"
+        id="contributionAmount"
+        placeholder="Enter amount"
+        min="1"
+    >
+
+    <label for="contributionDueDate">
+        Due Date
+    </label>
+
+    <input
+        type="date"
+        id="contributionDueDate"
+    >
+
+    <label for="contributionPhone">
+        M-PESA Phone Number
+    </label>
+
+    <input
+        type="tel"
+        id="contributionPhone"
+        placeholder="07XXXXXXXX"
+    >
+
+    <label>
+        Payment Method
+    </label>
+
+    <div>
+
+        <button
+            type="button"
+            onclick="selectContributionMethod('mpesa')"
+        >
+            M-PESA STK
+        </button>
+
+        <button
+            type="button"
+            onclick="selectContributionMethod('bank')"
+        >
+            Bank
+        </button>
+
+    </div>
+
+    <button
+        type="button"
+        onclick="startContributionPayment()"
+    >
+        Continue Payment
+    </button>
+
+    <div
+        id="contributionStatus"
+        class="status-message"
+    ></div>
+
+</div>
+        <!-- ====================================
+             WITHDRAWAL VOTING
+        ===================================== -->
+
+        <div
+            id="withdrawalVotingSection"
+            class="dashboard-card"
+            style="display: none;"
+        >
+
+            <h3>
+                Withdrawal Requests & Voting
+            </h3>
+
+            <div id="withdrawalRequestsList">
+
+                <p>
+                    No pending withdrawal requests.
+                </p>
+
+            </div>
+
+        </div>
+
+
+        <!-- ====================================
+             WITHDRAWAL PANEL
+        ===================================== -->
+
+        <div  
+            id="withdrawalPanel"  
+            class="dashboard-card"  
+            style="display: none;"  
+        >  
+
+            <h3>  
+                Create Withdrawal Request  
+            </h3>  
+
+            <label for="withdrawalAmount">  
+                Withdrawal Amount  
+            </label>  
+
+            <input  
+                type="number"  
+                id="withdrawalAmount"  
+                placeholder="Enter amount"  
+                min="1"  
+            >  
+
+            <label for="withdrawalReason">  
+                Reason for Withdrawal  
+            </label>  
+
+            <input  
+                type="text"  
+                id="withdrawalReason"  
+                placeholder="Enter reason"  
+            >  
+
+            <label for="withdrawalDestination">  
+                Destination  
+            </label>  
+
+            <input  
+                type="text"  
+                id="withdrawalDestination"  
+                placeholder="Enter destination"  
+            >  
+
+            <button  
+                type="button"  
+                onclick="createWithdrawal()"  
+            >  
+                Submit Withdrawal Request  
+            </button>  
+
+            <div  
+                id="withdrawalStatus"  
+                class="status-message"  
+            >  
+            </div>  
+
+        </div>  
+      <!-- ====================================
+     ADMIN DASHBOARD
+===================================== -->
+
+<div
+    id="adminPanel"
+    class="dashboard-card"
+    style="display: none;"
+>
+
+    <h2>
+        Admin Dashboard
+    </h2>
+
+    <p>
+        Authorized administrator controls
+        for CCS VSN30.
+    </p>
+
+
+    <!-- ADMIN SUMMARY -->
+
+    <div class="dashboard-grid">
+
+        <div class="dashboard-card">
+
+            <h3>
+                Total Contributions
+            </h3>
+
+            <div
+                id="adminTotalContributions"
+                class="balance-amount"
+            >
+                KES 0
+            </div>
+
+        </div>
+
+
+        <div class="dashboard-card">
+
+            <h3>
+                Active Members
+            </h3>
+
+            <div
+                id="adminActiveMembers"
+                class="balance-amount"
+            >
+                0
+            </div>
+
+        </div>
+
+
+        <div class="dashboard-card">
+
+            <h3>
+                Total Accounts
+            </h3>
+
+            <div
+                id="adminTotalAccounts"
+                class="balance-amount"
+            >
+                0
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- MEMBERS -->
+
+    <div class="dashboard-card">
+
+        <h3>
+            Members
+        </h3>
+
+        <div id="adminMembersList">
+
+            <p>
+                Loading members...
+            </p>
+
+        </div>
+
+    </div>
+<!-- =========================================
+     ADMIN ROLE MANAGEMENT
+========================================= -->
+
+<div
+    id="roleManagementPanel"
+    class="dashboard-card"
+>
+
+    <h3>🛡️ Admin Role Management</h3>
+
+    <p>
+        Assign member roles and review promotion
+        requests. Only the active Admin can manage roles.
+    </p>
+
+    <!-- ASSIGN ROLE -->
+
+    <div class="dashboard-card">
+
+        <h4>Assign Member Role</h4>
+
+        <label for="roleTargetMember">
+            Select Member
+        </label>
+
+        <select id="roleTargetMember" onchange="showSelectedMemberDetails()">
+    <option value="">Select a member</option>
+</select>
+
+<!-- Selected Member Details -->
+<div id="selectedMemberDetails" class="dashboard-card">
+    <h4>Selected Member Details</h4>
+    <p>Select a member to view their details before assigning a role.</p>
+</div>
+
+        <label for="roleTargetValue">
+            Assign Role
+        </label>
+
+        <select id="roleTargetValue">
+
+            <option value="member">
+                Member
+            </option>
+
+            <option value="treasurer">
+                Treasurer
+            </option>
+
+            <option value="secretary">
+                Secretary
+            </option>
+
+            <option value="committee">
+                Committee
+            </option>
+
+        </select>
+
+        <button
+            type="button"
+            onclick="assignSelectedMemberRole()"
+        >
+            Assign Role
+        </button>
+
+        <div
+            id="roleAssignmentStatus"
+            class="status-message"
+            aria-live="polite"
+        ></div>
+
+    </div>
+
+
+    <!-- MEMBER ROLE LIST -->
+
+    <div class="dashboard-card">
+
+        <h4>Current Member Roles</h4>
+
+        <div id="roleMembersList" aria-live="polite">
+
+            <p>
+                Open Admin Dashboard to load member roles.
+            </p>
+
+        </div>
+
+    </div>
+
+
+    <!-- PROMOTION REQUESTS -->
+
+    <div class="dashboard-card">
+
+        <h4>Promotion Requests</h4>
+
+        <p>
+            Review requests from members who want to
+            become Treasurers or Committee members.
+        </p>
+
+        <div
+            id="promotionRequestsList"
+            aria-live="polite"
+        >
+
+            <p>
+                No requests loaded yet.
+            </p>
+
+        </div>
+
+    </div>
+
+
+    <!-- ROLE MANAGEMENT STATUS -->
+
+    <div
+        id="roleManagementStatus"
+        class="status-message"
+        aria-live="polite"
+    ></div>
+
+    <button
+        type="button"
+        class="secondary"
+        onclick="loadRoleManagement()"
+    >
+        Refresh Role Management
+    </button>
+
+</div>
+
+<!-- END ADMIN ROLE MANAGEMENT -->
+
+    <!-- CONTRIBUTIONS -->
+
+    <div class="dashboard-card">
+
+        <h3>
+            Contribution Records
+        </h3>
+
+        <div id="adminContributionsList">
+
+            <p>
+                Loading contribution records...
+            </p>
+
+        </div>
+
+    </div>
+
+
+    <!-- WITHDRAWALS -->
+
+    <div class="dashboard-card">
+
+        <h3>
+            Withdrawal Records
+        </h3>
+
+        <div id="adminWithdrawalsList">
+
+            <p>
+                Loading withdrawal records...
+            </p>
+
+        </div>
+
+    </div>
+
+
+    <!-- VOTING RECORDS -->
+
+    <div class="dashboard-card">
+
+        <h3>
+            Detailed Voting Records
+        </h3>
+
+        <div id="adminVotingList">
+
+            <p>
+                Loading voting records...
+            </p>
+
+        </div>
+
+    </div>
+
+
+    <div
+        id="adminStatus"
+        class="status-message"
+    ></div>
+
+
+    <button
+        type="button"
+        class="secondary"
+        onclick="closeAdminPanel()"
+    >
+        Close Admin Dashboard
+    </button>
+
+</div>
+<!-- ========================================
+     FINANCIAL REPORTS
+========================================= --><div id="reportsPanel" class="dashboard-card feature-panel"><h3>📊 Financial Reports</h3>
+
+<p>Review contributions, withdrawals and monthly financial activity.</p>
+
+<div class="report-summary">
+    <div class="report-stat">
+        <span>Total Contributions</span>
+        <strong id="reportContributions">KES 0</strong>
+    </div>
+
+    <div class="report-stat">
+        <span>Total Withdrawals</span>
+        <strong id="reportWithdrawals">KES 0</strong>
+    </div>
+</div>
+
+<h3>Monthly Contributions</h3>
+<div class="chart-container">
+    <canvas id="contributionsChart"></canvas>
+</div>
+
+<h3>Monthly Withdrawals</h3>
+<div class="chart-container">
+    <canvas id="withdrawalsChart"></canvas>
+</div>
+
+<h3>Member Performance</h3>
+<div id="memberPerformance">
+    <p>Log in to load member performance.</p>
+</div>
+
+<button type="button" onclick="loadReports()">
+    Refresh Reports
+</button>
+
+</div><!-- ========================================
+     GROUP FORUM
+========================================= --><div id="forumPanel" class="dashboard-card feature-panel"><h3>💬 CCS VSN30 Group Forum</h3>
+
+<p>Share updates and discuss group matters with other members.</p>
+
+<label for="forumTitle">Post Title</label>
+<input
+    id="forumTitle"
+    type="text"
+    maxlength="150"
+    placeholder="Enter post title"
+>
+
+<label for="forumBody">Message</label>
+<textarea
+    id="forumBody"
+    maxlength="5000"
+    rows="4"
+    placeholder="Write your message..."
+></textarea>
+
+<button type="button" onclick="createForumPost()">
+    Publish Post
+</button>
+
+<div id="forumStatus" class="status-message"></div>
+
+<h3>Recent Posts</h3>
+
+<div id="forumPostsList">
+    <p>Log in to view forum posts.</p>
+</div>
+
+<button type="button" onclick="loadForum()">
+    Refresh Forum
+</button>
+
+<a
+    class="whatsapp-link"
+    href="https://chat.whatsapp.com/Jh5VFBAX2DT8zSsSwWfbon?s=cl&p=a&mlu=4&ilr=4&iam=0"
+    target="_blank"
+    rel="noopener noreferrer"
+>
+    🟢 Open CCS VSN30 WhatsApp Group
+</a>
+
+</div>
+
+      <!-- ========================================
+     BOTTOM NAVIGATION
+========================================= --><nav id="bottomNavigation" class="bottom-navigation"><button type="button" onclick="navigateDashboard('dashboardScreen')">
+    🏠<span>Dashboard</span>
+</button>
+
+<button type="button" onclick="navigateDashboard('contributionPanel')">
+    💰<span>Contributions</span>
+</button>
+
+<button type="button" onclick="openCommunity()">
+    👥<span>Community</span>
+</button>
+
+<button type="button" onclick="navigateDashboard('reportsPanel')">
+    📊<span>Reports</span>
+</button>
+
+</nav>
+        <!-- ====================================  
+             LOGOUT  
+        ===================================== -->  
+
+        <button  
+            type="button"  
+            class="logout-button"  
+            onclick="logoutUser()"  
+        >  
+            Logout  
+        </button>  
+
+    </div>  
+<!-- =========================================
+     CCS VSN30 GROUP CHAT DASHBOARD
+========================================= -->
+
+<!-- Floating Chat Button -->
+
+<button
+    type="button"
+    id="floatingChatButton"
+    class="floating-chat-button"
+    onclick="openGroupChatDashboard()"
+    aria-label="Open Group Chat"
+>
+    💬
+    <span>Group Chat</span>
+</button>
+
+
+<!-- Dedicated Chat Dashboard -->
+
+<div
+    id="chatDashboard"
+    class="chat-dashboard"
+    aria-hidden="true"
+>
+
+    <!-- Dashboard Header -->
+
+    <div class="chat-dashboard-header">
+
+        <button
+            type="button"
+            class="chat-back-button"
+            onclick="closeGroupChatDashboard()"
+        >
+            ← Back
+        </button>
+
+        <div>
+            <h2>💬 CCS VSN30 Chat</h2>
+
+            <p>
+                Group communication and discussions
+            </p>
+        </div>
+
+        <button
+            type="button"
+            class="secondary"
+            onclick="loadGroupChat()"
+        >
+            ↻ Refresh
+        </button>
+
+    </div>
+
+
+    <!-- Chat Content -->
+
+    <div class="chat-dashboard-content">
+
+        <div class="chat-information">
+            Messages are visible to active group members.
+            You can reply to messages and edit your own messages.
+        </div>
+
+
+        <!-- Messages -->
+
+        <div
+            id="groupChatMessages"
+            class="group-chat-messages"
+            aria-live="polite"
+        >
+            <p>Loading group messages...</p>
+        </div>
+
+
+        <!-- Reply Preview -->
+
+        <div
+            id="chatReplyPreview"
+            class="chat-reply-preview"
+            style="display:none;"
+        >
+
+            <div>
+                <strong>Replying to</strong>
+
+                <p id="chatReplyText"></p>
+            </div>
+
+            <button
+                type="button"
+                class="chat-reply-cancel"
+                onclick="cancelChatReply()"
+                aria-label="Cancel reply"
+            >
+                ✕
+            </button>
+
+        </div>
+
+
+        <!-- Message Composer -->
+
+        <div class="chat-message-composer">
+
+            <label for="groupChatInput">
+                Your Message
+            </label>
+
+            <textarea
+                id="groupChatInput"
+                maxlength="3000"
+                rows="3"
+                placeholder="Write a message..."
+            ></textarea>
+
+            <div class="chat-composer-actions">
+
+                <button
+                    type="button"
+                    id="groupChatSubmitButton"
+                    class="chat-save-button"
+                    onclick="sendGroupChatMessage()"
+                >
+                    Send Message
+                </button>
+
+                <button
+                    type="button"
+                    id="groupChatCancelEditButton"
+                    class="chat-cancel-button"
+                    style="display:none;"
+                    onclick="cancelChatEdit()"
+                >
+                    Cancel Edit
+                </button>
+
+            </div>
+
+            <div
+                id="groupChatStatus"
+                class="status-message"
+                aria-live="polite"
+            ></div>
+
+        </div>
+
+
+        <!-- WhatsApp Group -->
+
+        <a
+            class="whatsapp-link"
+            href="https://chat.whatsapp.com/Jh5VFBAX2DT8zSsSwWfbon?s=cl&p=a&mlu=4&ilr=4&iam=0"
+            target="_blank"
+            rel="noopener noreferrer"
+        >
+            🟢 Open CCS VSN30 WhatsApp Group
+        </a>
+
+    </div>
+
+</div>
+
+<!-- GROUP CHAT DASHBOARD --><div class="dashboard-card group-chat-card"><h3>💬 Group Chat</h3>
+
+<p>
+    Communicate with members, reply to messages,
+    and edit your own messages.
+</p>
+
+<button
+    type="button"
+    onclick="openGroupChatDashboard()"
+>
+    Open Group Chat
+</button>
+
+</div>
+
+<!-- DISCUSSIONS -->
+
+<div
+    id="discussionsTab"
+    class="community-tab-content"
+    style="display:none;"
+>
+
+    <h3>📢 Group Discussions</h3>
+
+    <p>Create a topic or discuss matters affecting the group.</p>
+
+    <label for="forumTitle">Discussion Title</label>
+
+    <input
+        id="forumTitle"
+        type="text"
+        maxlength="150"
+        placeholder="Enter discussion title"
+    >
+
+    <label for="forumBody">Discussion Message</label>
+
+    <textarea
+        id="forumBody"
+        maxlength="5000"
+        rows="4"
+        placeholder="Write your discussion..."
+    ></textarea>
+
+    <button
+        type="button"
+        onclick="createForumPost()"
+    >
+        Publish Discussion
+    </button>
+
+    <div id="forumStatus" class="status-message"></div>
+
+    <h3>Recent Discussions</h3>
+
+    <div id="forumPostsList">
+        <p>Open Community to load discussions.</p>
+    </div>
+
+    <button
+        type="button"
+        class="secondary"
+        onclick="loadForum()"
+    >
+        Refresh Discussions
+    </button>
+
+</div>
+
+</div>
+</section>  
+
+
+<!-- ========================================  
+     JAVASCRIPT  
+========================================= -->  
+
+<script  
+    src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"  
+></script>  
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script  src="./app.js"  
+></script>
+<script>
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("./service-worker.js")
+        .catch((error) => {
+          console.error("Service worker registration failed:", error);
+        });
+    });
+  }
+</script>
+</body>  </html>
