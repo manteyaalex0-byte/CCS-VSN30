@@ -1,0 +1,11 @@
+{
+  "appId": "com.ccsvsn30.app",
+  "appName": "CCS VSN30",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": false
+  }
+}
