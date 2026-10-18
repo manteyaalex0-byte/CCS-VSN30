@@ -153,121 +153,305 @@
             autocomplete="new-password"  
         >  
 
-        <label for="role">  
-            Account Role  
-        </label>  
+ <button
+type="button"
+id="continueToSubscriptionButton"
+onclick="goToSubscription()"
+style="
+display: block;
+width: 100%;
+min-height: 50px;
+margin-top: 20px;
+padding: 14px;
+background: #059669;
+color: #ffffff;
+font-size: 16px;
+font-weight: bold;
+-webkit-text-fill-color: #ffffff;
+border: 2px solid #34d399;
+border-radius: 12px;
+opacity: 1;
+visibility: visible;
+"
+>Continue to Subscription</button>
 
-        <select id="role">  
+    <div
+        id="signupStatus"
+        class="status-message"
+    ></div>
 
-            <option value="">  
-                Select your role  
-            </option>  
-
-            <option value="Member">  
-                Member  
-            </option>  
-
-            <option value="Secretary">  
-                Secretary  
-            </option>  
-
-        </select>  
-
-        <button  
-            type="button"  
-            onclick="goToSubscription()"  
-        >  
-            Continue to Subscription  
-        </button>  
-<div
-    id="signupStatus"
-    class="status-message"
-></div>
-        <button  
-            type="button"  
-            class="secondary"  
-            onclick="showScreen('welcomeScreen')"  
-        >  
-            Back  
-        </button>  
-
-    </div>  
-
-</section>  
-
-
-<!-- ========================================  
-     SUBSCRIPTION SCREEN  
-========================================= -->  
-
-<section  
-    id="subscriptionScreen"  
-    class="screen"  
->  
-
-    <div class="payment-card">  
-
-        <div class="payment-icon">  
-            M-PESA  
-        </div>  
-
-        <h2>  
-            Subscription Payment  
-        </h2>  
-
-        <p>  
-            Your account will only be created after  
-            the subscription payment has been  
-            successfully verified.  
-        </p>  
-
-        <div class="amount-box">  
-
-            <span>  
-                Registration / Subscription Fee  
-            </span>  
-
-            <strong>  
-                KSh 100  
-            </strong>  
-
-        </div>  
-
-        <label for="mpesaPhone">  
-            M-PESA Phone Number  
-        </label>  
-
-        <input  
-            type="tel"  
-            id="mpesaPhone"  
-            placeholder="07XXXXXXXX"  
-            autocomplete="tel"  
-        >  
-
-        <button  
-            type="button"  
-            onclick="startPayment()"  
-        >  
-            Pay with M-PESA  
-        </button>  
-
-        <div  
-            id="paymentStatus"  
-            class="status-message"  
-        >  
-        </div>  
-
-        <button  
-            type="button"  
-            class="secondary"  
-            onclick="showScreen('signupScreen')"  
-        >  
-            Back  
-        </button>  
+    <button
+        type="button"
+        id="backFromSignupButton"
+        class="secondary"
+        onclick="showScreen('welcomeScreen')"
+        style="
+            display: block;
+            width: 100%;
+            min-height: 50px;
+            margin-top: 14px;
+            padding: 14px;
+            background: #334155;
+            color: #ffffff;
+            font-size: 16px;
+            font-weight: bold;
+            -webkit-text-fill-color: #ffffff;
+            border: 2px solid #94a3b8;
+            border-radius: 12px;
+            opacity: 1;
+            visibility: visible;
+        "
+    >Back</button>
 
     </div>  
 
 </section>  
+
+
+<!-- ========================================
+     SUBSCRIPTION PAYMENT SCREEN
+========================================= -->
+
+<section
+    id="subscriptionScreen"
+    class="screen"
+>
+
+    <div class="payment-card">
+
+        <div class="payment-icon">
+            CCS
+        </div>
+
+        <h2>Registration Subscription</h2>
+
+        <p>
+            Pay the registration fee of KSh 100.
+            After submitting your payment details,
+            your registration will remain pending
+            until payment verification and Admin review.
+        </p>
+
+        <!-- SUBSCRIPTION AMOUNT -->
+
+        <div class="amount-box">
+
+            <span>Registration Fee</span>
+
+            <strong>KSh 100</strong>
+
+        </div>
+
+        <!-- PAYMENT METHOD SELECTION -->
+
+        <h3>Choose Payment Method</h3>
+
+        <div class="subscription-payment-options">
+
+            <button
+                type="button"
+                id="manualPaybillOption"
+                onclick="selectSubscriptionMethod('manual')"
+            >
+                Manual M-PESA PayBill
+            </button>
+
+            <button
+                type="button"
+                id="stkPushOption"
+                onclick="selectSubscriptionMethod('stk')"
+            >
+                M-PESA STK Push
+            </button>
+
+        </div>
+
+        <!-- ==================================
+             MANUAL PAYBILL PAYMENT
+        =================================== -->
+
+        <div
+            id="manualSubscriptionPanel"
+            style="display:none;"
+        >
+
+            <h3>Manual M-PESA Payment</h3>
+
+            <p>
+                Open M-PESA on your phone and pay
+                the subscription fee using these details.
+            </p>
+
+            <label for="subscriptionPaybill">
+                PayBill Number
+            </label>
+
+            <div class="payment-detail-row">
+
+                <input
+                    type="text"
+                    id="subscriptionPaybill"
+                    value="542542"
+                    readonly
+                >
+
+                <button
+                    type="button"
+                    onclick="copySubscriptionDetail('subscriptionPaybill')"
+                >
+                    Copy
+                </button>
+
+            </div>
+
+            <label for="subscriptionAccountNumber">
+                Account Number
+            </label>
+
+            <div class="payment-detail-row">
+
+                <input
+                    type="text"
+                    id="subscriptionAccountNumber"
+                    value="06409936986150"
+                    readonly
+                >
+
+                <button
+                    type="button"
+                    onclick="copySubscriptionDetail('subscriptionAccountNumber')"
+                >
+                    Copy
+                </button>
+
+            </div>
+
+            <label for="subscriptionPaymentPhone">
+                M-PESA Phone Number
+            </label>
+
+            <input
+                type="tel"
+                id="subscriptionPaymentPhone"
+                placeholder="07XXXXXXXX"
+                autocomplete="tel"
+            >
+
+            <label for="subscriptionTransactionReference">
+                M-PESA Transaction Code
+            </label>
+
+            <input
+                type="text"
+                id="subscriptionTransactionReference"
+                maxlength="30"
+                placeholder="Enter transaction code"
+                autocomplete="off"
+            >
+
+            <label for="subscriptionPaymentScreenshot">
+                Payment Screenshot (Optional)
+            </label>
+
+            <input
+                type="file"
+                id="subscriptionPaymentScreenshot"
+                accept="image/*"
+            >
+
+            <p class="step-text">
+                Submit the transaction code after paying.
+                Your payment will be reviewed before
+                your membership is activated.
+            </p>
+
+            <button
+                type="button"
+                id="submitManualSubscriptionButton"
+                onclick="submitManualSubscriptionPayment()"
+            >
+                Submit Payment for Review
+            </button>
+
+            <div
+                id="manualSubscriptionStatus"
+                class="status-message"
+                aria-live="polite"
+            ></div>
+
+        </div>
+
+        <!-- ==================================
+             STK PUSH PAYMENT
+        =================================== -->
+
+        <div
+            id="stkSubscriptionPanel"
+            style="display:none;"
+        >
+
+            <h3>Pay with M-PESA STK Push</h3>
+
+            <p>
+                Enter your M-PESA phone number.
+                If the payment request is accepted,
+                check your phone and follow the prompts.
+            </p>
+
+            <label for="mpesaPhone">
+                M-PESA Phone Number
+            </label>
+
+            <input
+                type="tel"
+                id="mpesaPhone"
+                placeholder="07XXXXXXXX"
+                autocomplete="tel"
+            >
+
+            <button
+                type="button"
+                id="startSubscriptionStkButton"
+                onclick="startPayment()"
+            >
+                Request STK Push — KSh 100
+            </button>
+
+            <div
+                id="paymentStatus"
+                class="status-message"
+                aria-live="polite"
+            ></div>
+
+            <p class="step-text">
+                Sending a payment request does not
+                confirm payment. Your transaction
+                must be verified before approval.
+            </p>
+
+        </div>
+
+        <!-- GENERAL REGISTRATION STATUS -->
+
+        <div
+            id="subscriptionRegistrationStatus"
+            class="status-message"
+            aria-live="polite"
+        ></div>
+
+        <!-- NAVIGATION -->
+
+        <button
+            type="button"
+            class="secondary"
+            onclick="showScreen('signupScreen')"
+        >
+            Back to Registration
+        </button>
+
+    </div>
+
+</section>
 
 
 <!-- ========================================  
@@ -789,6 +973,29 @@
                 </p>  
 
             </div>  
+           <!-- CCS VSN30 TREASURER ACCESS -->
+
+<div
+    id="treasurerCard"
+    class="dashboard-card"
+    style="display:none;"
+>
+    <h3>💰 Treasurer</h3>
+
+    <p>
+        Review contribution payments, view member details,
+        inspect screenshots, and approve or reject payments.
+    </p>
+
+    <button
+        type="button"
+        onclick="openTreasurerDashboard()"
+    >
+        Open Treasurer Dashboard
+    </button>
+</div>
+
+<!-- END TREASURER ACCESS -->
         <!-- ====================================
      ADMIN
 ===================================== -->
@@ -820,89 +1027,249 @@
             
 
                 </div>
-        <!-- ====================================
-     CONTRIBUTION PAYMENT PANEL
-===================================== -->
+ <!-- CCS VSN30 CONTRIBUTIONS AND PAYMENT SYSTEM -->
+<div id="contributionPanel" class="dashboard-card">
 
-<div
-    id="contributionPanel"
-    class="dashboard-card"
->
-
-    <h3>
-        Make Contribution
-    </h3>
+    <h2>Make Contribution</h2>
 
     <p>
-        Enter your contribution amount and
-        choose your payment method.
+        Choose your contribution period. The system will
+        calculate the total at KSh 50 per day.
     </p>
 
-    <label for="contributionAmount">
-        Contribution Amount
+    <!-- CONTRIBUTION TYPE -->
+    <label for="contributionType">
+        Contribution Type
     </label>
 
-    <input
-        type="number"
-        id="contributionAmount"
-        placeholder="Enter amount"
-        min="1"
-    >
+    <select id="contributionType">
+        <option value="contribution">Regular Contribution</option>
+        <option value="advance">Advance Contribution</option>
+    </select>
 
-    <label for="contributionDueDate">
-        Due Date
+    <!-- PERIOD SELECTION -->
+    <label for="contributionPeriod">
+        Choose Contribution Period
+    </label>
+
+    <select id="contributionPeriod">
+       <option value="1" selected>1 Day — KSh 50</option>
+<option value="7">7 Days — KSh 350</option>
+<option value="14">14 Days — KSh 700</option>
+<option value="30">30 Days — KSh 1,500</option>
+<option value="60">60 Days — KSh 3,000</option>
+<option value="90">90 Days — KSh 4,500</option>
+<option value="180">180 Days — KSh 9,000</option>
+<option value="365">365 Days — KSh 18,250</option>
+<option value="custom">Custom Date Range</option> 
+    </select>
+
+    <!-- START DATE -->
+    <label for="contributionStartDate">
+        Contribution Start Date
     </label>
 
     <input
         type="date"
-        id="contributionDueDate"
+        id="contributionStartDate"
+        required
     >
 
-    <label for="contributionPhone">
-        M-PESA Phone Number
-    </label>
+    <!-- CUSTOM END DATE -->
+    <div id="customContributionEndSection"
+         style="display:none;">
 
-    <input
-        type="tel"
-        id="contributionPhone"
-        placeholder="07XXXXXXXX"
-    >
+        <label for="contributionEndDate">
+            Contribution End Date
+        </label>
 
-    <label>
-        Payment Method
-    </label>
+        <input
+            type="date"
+            id="contributionEndDate"
+        >
 
-    <div>
+        <p>
+            Both the start date and end date count.
+        </p>
+
+    </div>
+
+    <!-- AUTOMATIC CALCULATION -->
+    <div class="dashboard-card">
+
+        <h3>Contribution Summary</h3>
+
+        <p>
+            Daily Rate:
+            <strong>KSh 50</strong>
+        </p>
+
+        <p>
+            Number of Days:
+            <strong id="calculatedContributionDays">30</strong>
+        </p>
+
+        <p>
+            Total Amount to Pay:
+            <strong id="calculatedContributionTotal">
+                KSh 1,500
+            </strong>
+        </p>
+
+        <p id="contributionCalculationStatus"
+           class="status-message"
+           aria-live="polite">
+            Select your contribution period.
+        </p>
+
+    </div>
+
+    <!-- PAYMENT METHOD -->
+    <h3>Choose Payment Method</h3>
+
+    <div class="payment-method-options">
 
         <button
             type="button"
-            onclick="selectContributionMethod('mpesa')"
-        >
-            M-PESA STK
+            id="selectStkPayment"
+            onclick="selectContributionMethod('mpesa_stk')">
+            M-PESA STK Push
         </button>
 
         <button
             type="button"
-            onclick="selectContributionMethod('bank')"
-        >
-            Bank
+            id="selectManualPayment"
+            onclick="selectContributionMethod('manual_mpesa')">
+            Manual M-PESA
         </button>
 
     </div>
 
-    <button
-        type="button"
-        onclick="startContributionPayment()"
-    >
-        Continue Payment
-    </button>
+    <!-- STK PAYMENT -->
+    <div id="stkPaymentSection"
+         style="display:none;">
 
+        <h3>M-PESA STK Push</h3>
+
+        <label for="contributionPhone">
+            M-PESA Phone Number
+        </label>
+
+        <input
+            type="tel"
+            id="contributionPhone"
+            placeholder="07XXXXXXXX"
+            autocomplete="tel"
+        >
+
+        <button
+            type="button"
+            id="startStkPaymentButton"
+            onclick="startContributionPayment()">
+            Request STK Payment
+        </button>
+
+        <p>
+            Real STK payments require backend credentials
+            and a working payment callback.
+        </p>
+
+    </div>
+
+    <!-- MANUAL PAYMENT -->
+    <div id="manualMpesaSection"
+         style="display:none;">
+
+        <h3>Manual M-PESA Payment</h3>
+
+        <div class="amount-box">
+
+            <p>Payment Method</p>
+
+            <strong>M-PESA Paybill</strong>
+
+            <p>Business Number</p>
+
+            <strong id="groupPaybillDisplay">
+                To be configured
+            </strong>
+
+            <p>Account Number</p>
+
+            <strong id="groupAccountDisplay">
+                To be configured
+            </strong>
+
+        </div>
+
+        <p>
+            1. Open M-PESA.
+            <br>
+            2. Select Lipa na M-PESA, then Paybill.
+            <br>
+            3. Enter the group's payment details when provided.
+            <br>
+            4. Pay the calculated amount.
+            <br>
+            5. Keep the M-PESA confirmation message.
+            <br>
+            6. Enter the transaction code and upload a screenshot.
+        </p>
+
+        <label for="manualMpesaPhone">
+            Phone Number Used for Payment
+        </label>
+
+        <input
+            type="tel"
+            id="manualMpesaPhone"
+            placeholder="07XXXXXXXX"
+        >
+
+        <label for="manualMpesaReference">
+            M-PESA Transaction Code
+        </label>
+
+        <input
+            type="text"
+            id="manualMpesaReference"
+            placeholder="Enter transaction code"
+            maxlength="30"
+            autocomplete="off"
+        >
+
+        <label for="contributionScreenshot">
+            Payment Screenshot
+        </label>
+
+        <input
+            type="file"
+            id="contributionScreenshot"
+            accept="image/jpeg,image/png"
+        >
+
+        <p>
+            JPG or PNG only. Maximum file size: 5 MB.
+        </p>
+
+        <button
+            type="button"
+            id="submitManualContributionButton"
+            onclick="submitManualContributionPayment()">
+            Submit Payment for Verification
+        </button>
+
+    </div>
+
+    <!-- STATUS -->
     <div
         id="contributionStatus"
         class="status-message"
-    ></div>
+        aria-live="polite">
+    </div>
 
 </div>
+<!-- END CCS VSN30 CONTRIBUTIONS AND PAYMENT SYSTEM -->
         <!-- ====================================
              WITHDRAWAL VOTING
         ===================================== -->
@@ -932,11 +1299,11 @@
              WITHDRAWAL PANEL
         ===================================== -->
 
-        <div  
-            id="withdrawalPanel"  
-            class="dashboard-card"  
-            style="display: none;"  
-        >  
+        <div
+    id="withdrawalPanel"
+    class="dashboard-card"
+    style="display: block;"
+>
 
             <h3>  
                 Create Withdrawal Request  
@@ -987,6 +1354,162 @@
             </div>  
 
         </div>  
+  <!-- =========================================
+     CCS VSN30 — TREASURER DASHBOARD
+========================================= -->
+
+<div
+    id="treasurerPanel"
+    class="dashboard-card"
+    style="display:none;"
+>
+
+    <h2>💰 Treasurer Dashboard</h2>
+
+    <p>
+        Review member contributions, inspect payment
+        evidence, and approve or reject submissions.
+    </p>
+
+    <!-- PAYMENT SUMMARY -->
+
+    <div class="dashboard-grid">
+
+        <div class="dashboard-card">
+
+            <h3>Pending Reviews</h3>
+
+            <div
+                id="treasurerPendingCount"
+                class="balance-amount"
+            >
+                0
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- REFRESH BUTTON -->
+
+    <button
+        type="button"
+        id="refreshTreasurerReviewsButton"
+        onclick="loadTreasurerReviews()"
+    >
+        ↻ Refresh Pending Payments
+    </button>
+
+    <div
+        id="treasurerReviewStatus"
+        class="status-message"
+        aria-live="polite"
+    >
+        Pending payment reviews will appear here.
+    </div>
+
+    <!-- PENDING PAYMENT LIST -->
+
+    <div
+        id="treasurerPendingPaymentsList"
+        aria-live="polite"
+    >
+
+        <p>
+            Tap Refresh Pending Payments to load submissions.
+        </p>
+
+    </div>
+  <!-- ========================================================
+     CCS VSN30 PAYMENT HISTORY
+======================================================== --><div class="dashboard-card" id="treasurerPaymentHistoryPanel"><h2>📚 Payment History</h2>
+
+<p>
+    View previously reviewed contribution payments.
+</p>
+
+<div class="history-filter-buttons">
+    <button
+        type="button"
+        onclick="loadTreasurerPaymentHistory('approved')"
+    >
+        ✅ Approved History
+    </button>
+
+    <button
+        type="button"
+        class="secondary"
+        onclick="loadTreasurerPaymentHistory('rejected')"
+    >
+        ❌ Rejected History
+    </button>
+
+    <button
+        type="button"
+        class="secondary"
+        onclick="loadTreasurerPaymentHistory('all')"
+    >
+        📋 All Reviewed Payments
+    </button>
+</div>
+
+<p id="treasurerHistoryStatus" aria-live="polite"></p>
+
+<div id="treasurerPaymentHistoryList">
+    <p>Select a history filter to load reviewed payments.</p>
+</div>
+
+</div>
+<!-- =========================================
+     CCS VSN30 — TREASURER WITHDRAWAL MANAGEMENT
+========================================= -->
+
+<hr>
+
+<h2>💸 Withdrawal Management</h2>
+
+<p>
+    Review withdrawal requests, inspect their details,
+    and manage the withdrawal approval process.
+</p>
+
+<div class="dashboard-card">
+    <h3>Pending Withdrawal Requests</h3>
+
+    <div
+        id="treasurerPendingWithdrawalsCount"
+        class="balance-amount"
+    >0</div>
+</div>
+
+<button
+    type="button"
+    onclick="loadTreasurerWithdrawals()"
+>
+    ↻ Refresh Withdrawal Requests
+</button>
+
+<div
+    id="treasurerWithdrawalStatus"
+    class="status-message"
+    aria-live="polite"
+>
+    Withdrawal requests will appear here.
+</div>
+
+<div
+    id="treasurerPendingWithdrawalsList"
+    aria-live="polite"
+>
+    <p>
+        Tap Refresh Withdrawal Requests to load requests.
+    </p>
+</div>
+
+<!-- END TREASURER WITHDRAWAL MANAGEMENT -->
+</div>
+
+<!-- END CCS VSN30 TREASURER DASHBOARD -->
       <!-- ====================================
      ADMIN DASHBOARD
 ===================================== -->
@@ -996,7 +1519,35 @@
     class="dashboard-card"
     style="display: none;"
 >
+<!-- DAILY CONTRIBUTION SCHEDULE -->
 
+<div class="dashboard-card">
+
+    <h3>Daily Contribution Schedule</h3>
+
+    <p>
+        Set the required daily contribution for each member.
+    </p>
+
+    <div class="amount-box">
+        <span>Daily Contribution</span>
+        <strong>KSh 50</strong>
+    </div>
+
+    <button
+        type="button"
+        onclick="saveDailyContributionSchedule()"
+    >
+        Activate KSh 50 Daily Contribution
+    </button>
+
+    <div
+        id="dailyContributionScheduleStatus"
+        class="status-message"
+        aria-live="polite"
+    ></div>
+
+</div>
     <h2>
         Admin Dashboard
     </h2>
@@ -1061,23 +1612,53 @@
     </div>
 
 
-    <!-- MEMBERS -->
+<!-- =========================================
+     REGISTRATION ORDERS & APPROVALS
+========================================= --><div
+    id="registrationApprovalPanel"
+    class="dashboard-card"
+><h3>📋 Registration Orders & Approvals</h3>
 
-    <div class="dashboard-card">
+<p>
+    Review registration applications, inspect payment
+    references and verify payments before activating
+    new members.
+</p>
 
-        <h3>
-            Members
-        </h3>
+<div class="report-summary">
 
-        <div id="adminMembersList">
+    <div class="report-stat">
+        <span>Pending Applications</span>
 
-            <p>
-                Loading members...
-            </p>
-
-        </div>
-
+        <strong id="pendingRegistrationCount">0</strong>
     </div>
+
+</div>
+
+<button
+    type="button"
+    onclick="loadPendingRegistrations()"
+>
+    Refresh Applications
+</button>
+
+<div
+    id="registrationApprovalStatus"
+    class="status-message"
+    aria-live="polite"
+></div>
+
+<div
+    id="pendingRegistrationsList"
+    aria-live="polite"
+>
+    <p>
+        Open the Admin Dashboard to load pending
+        registration applications.
+    </p>
+</div>
+
+</div><!-- END REGISTRATION ORDERS & APPROVALS -->
 <!-- =========================================
      ADMIN ROLE MANAGEMENT
 ========================================= -->
@@ -1667,4 +2248,4 @@
     });
   }
 </script>
-</body>  </html>
+ 
