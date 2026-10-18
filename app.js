@@ -5865,3 +5865,3984 @@ async function startContributionPayment() {
                         payment_status:
                             "pending",
 
+                        payment_phone:
+                            normalizePhone(
+                                phone
+                            )
+
+                    }
+                ])
+                .select()
+                .single();
+
+
+        if (contributionError) {
+
+            console.error(
+                "Contribution creation error:",
+                contributionError
+            );
+
+            status.textContent =
+                "Could not create contribution: " +
+                contributionError.message;
+
+            return;
+
+        }
+
+
+        console.log(
+            "Pending contribution created:",
+            contribution
+        );
+
+
+        // =================================================
+        // SEND STK PUSH
+        // =================================================
+
+        status.textContent =
+            "Sending M-PESA STK Push...";
+
+
+        const {
+            data: functionData,
+            error: functionError
+        } =
+            await supabaseClient.functions.invoke(
+                "mpesa-stk",
+                {
+                    body: {
+
+                        phone:
+                            normalizePhone(
+                                phone
+                            ),
+
+                        amount:
+                            amount,
+
+                        contribution_id:
+                            contribution.id
+
+                    }
+                }
+            );
+
+
+        if (functionError) {
+
+            console.error(
+                "STK function error:",
+                functionError
+            );
+
+            status.textContent =
+                "Could not start M-PESA payment: " +
+                functionError.message;
+
+            return;
+
+        }
+
+
+        console.log(
+            "STK response:",
+            functionData
+        );
+
+
+        if (
+            !functionData ||
+            !functionData.success
+        ) {
+
+            status.textContent =
+                "M-PESA payment could not be started: " +
+                (
+                    functionData?.error ||
+                    "Unknown error"
+                );
+
+            return;
+
+        }
+
+
+        status.textContent =
+            "STK Push sent! Check your phone and enter your M-PESA PIN.";
+
+    } catch (error) {
+
+        console.error(
+            "Contribution payment error:",
+            error
+        );
+
+        status.textContent =
+            "Payment error: " +
+            error.message;
+
+    }
+
+}
+
+
+// =====================================================
+// MAKE FUNCTIONS AVAILABLE TO HTML onclick=""
+// =====================================================
+
+window.showScreen =
+    showScreen;
+
+window.goToSubscription =
+    goToSubscription;
+
+window.startPayment =
+    startPayment;
+
+window.verifyOTP =
+    verifyOTP;
+
+window.loginUser =
+    loginUser;
+
+window.requestPasswordReset =
+    requestPasswordReset;
+
+window.resetPassword =
+    resetPassword;
+
+window.createWithdrawal =
+    createWithdrawal;
+
+window.logoutUser =
+    logoutUser;
+
+window.loadWithdrawalVoting =
+    loadWithdrawalVoting;
+
+window.voteOnWithdrawal =
+    voteOnWithdrawal;
+
+window.rejectWithdrawal =
+    rejectWithdrawal;
+
+window.openAdminPanel =
+    openAdminPanel;
+
+window.closeAdminPanel =
+    closeAdminPanel;
+
+window.loadAdminMembers =
+    loadAdminMembers;
+
+window.loadAdminContributions =
+    loadAdminContributions;
+
+window.loadAdminWithdrawals =
+    loadAdminWithdrawals;
+
+window.loadAdminVoting =
+    loadAdminVoting;
+
+window.selectContributionMethod =
+    selectContributionMethod;
+
+window.startContributionPayment =
+    startContributionPayment;
+
+window.isValidPhone =
+    isValidPhone;
+
+window.normalizePhone =
+    normalizePhone;
+
+
+console.log(
+    "CCS VSN30 functions loaded successfully"
+);
+/* =========================================
+   CCS VSN30 — REPORTS, FORUM & MESSAGES
+========================================= */
+
+(function () {
+    "use strict";
+
+    let contributionsChart = null;
+    let withdrawalsChart = null;
+
+    const CCS_WHATSAPP_LINK =
+        "https://chat.whatsapp.com/Jh5VFBAX2DT8zSsSwWfbon?s=cl&p=a&mlu=4&ilr=4&iam=0";
+
+    function ccsUserId() {
+        return window.currentProfile?.id ||
+               (typeof currentProfile !== "undefined"
+                   ? currentProfile?.id
+                   : null);
+    }
+
+    function ccsProfile() {
+        return window.currentProfile ||
+            (typeof currentProfile !== "undefined"
+                ? currentProfile
+                : null);
+    }
+
+    function ccsElement(id) {
+        return document.getElementById(id);
+    }
+
+    function ccsStatus(id, message, error) {
+        const element = ccsElement(id);
+        if (!element) return;
+
+        element.textContent = message;
+        element.style.color = error ? "#ff7777" : "#5bdcff";
+    }
+
+    function ccsMoney(amount) {
+        return Number(amount || 0).toLocaleString("en-KE", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        });
+    }
+
+    function ccsDate(date) {
+        if (!date) return "Date unavailable";
+
+        const parsed = new Date(date);
+
+        if (Number.isNaN(parsed.getTime())) {
+            return "Date unavailable";
+        }
+
+        return parsed.toLocaleString("en-KE", {
+            dateStyle: "medium",
+            timeStyle: "short"
+        });
+    }
+
+    function ccsMake(tag, text, className) {
+        const element = document.createElement(tag);
+
+        if (text !== undefined && text !== null) {
+            element.textContent = String(text);
+        }
+
+        if (className) {
+            element.className = className;
+        }
+
+        return element;
+    }
+
+    function ccsRequireLogin() {
+        if (!ccsUserId()) {
+            alert("Please log in first.");
+            return false;
+        }
+
+        if (!window.supabaseClient &&
+            typeof supabaseClient === "undefined") {
+            alert("Supabase is not initialized. Please refresh the app.");
+            return false;
+        }
+
+        return true;
+    }
+
+    function ccsDb() {
+        return window.supabaseClient ||
+            (typeof supabaseClient !== "undefined"
+                ? supabaseClient
+                : null);
+    }
+
+    /* =========================================
+       BOTTOM NAVIGATION
+    ========================================= */
+
+    window.navigateDashboard = async function (targetId) {
+        const target = ccsElement(targetId);
+
+        if (!target) {
+            alert("Section not found: " + targetId);
+            return;
+        }
+
+        if (targetId === "dashboardScreen") {
+            target.scrollIntoView({
+                behavior: "smooth",
+                block: "start"
+            });
+            return;
+        }
+
+        if (!ccsRequireLogin()) return;
+
+        target.scrollIntoView({
+            behavior: "smooth",
+            block: "start"
+        });
+
+        if (targetId === "reportsPanel") {
+            await window.loadReports();
+        }
+
+        if (targetId === "forumPanel") {
+            await window.loadForum();
+        }
+
+        if (targetId === "messagesPanel") {
+            await window.loadMemberDirectory();
+            await window.loadPrivateMessages();
+        }
+    };
+
+    /* =========================================
+       MEMBER DIRECTORY
+    ========================================= */
+
+    window.loadMemberDirectory = async function () {
+        if (!ccsRequireLogin()) return;
+
+        const select = ccsElement("messageRecipient");
+        if (!select) return;
+
+        const db = ccsDb();
+        const myId = ccsUserId();
+
+        const { data, error } = await db
+            .from("profiles")
+            .select("id, full_name, role, is_active")
+            .eq("is_active", true)
+            .order("full_name", { ascending: true });
+
+        if (error) {
+            ccsStatus(
+                "messageStatus",
+                "Could not load members. Check profiles table permissions.",
+                true
+            );
+            console.error("Member directory:", error);
+            return;
+        }
+
+        const previousValue = select.value;
+
+        select.replaceChildren();
+
+        const placeholder = ccsMake(
+            "option",
+            "Choose a member to message"
+        );
+
+        placeholder.value = "";
+        select.appendChild(placeholder);
+
+        (data || [])
+            .filter(member => member.id !== myId)
+            .forEach(member => {
+                const option = ccsMake(
+                    "option",
+                    member.full_name || member.role || "Member"
+                );
+
+                option.value = member.id;
+                select.appendChild(option);
+            });
+
+        if ([...select.options].some(
+            option => option.value === previousValue
+        )) {
+            select.value = previousValue;
+        }
+    };
+
+    /* =========================================
+       REPORTS AND CHARTS
+    ========================================= */
+
+    window.loadReports = async function () {
+        if (!ccsRequireLogin()) return;
+
+        const db = ccsDb();
+
+        ccsStatus("reportContributions", "Loading contributions…");
+        ccsStatus("reportWithdrawals", "Loading withdrawals…");
+
+        const [contributionResult, withdrawalResult] =
+            await Promise.all([
+                db.from("contributions")
+                    .select("*")
+                    .limit(5000),
+
+                db.from("withdrawals")
+                    .select("*")
+                    .limit(5000)
+            ]);
+
+        if (contributionResult.error) {
+            ccsStatus(
+                "reportContributions",
+                "Unable to load contribution records.",
+                true
+            );
+
+            console.error(
+                "Contribution report:",
+                contributionResult.error
+            );
+        }
+
+        if (withdrawalResult.error) {
+            ccsStatus(
+                "reportWithdrawals",
+                "Unable to load withdrawal records.",
+                true
+            );
+
+            console.error(
+                "Withdrawal report:",
+                withdrawalResult.error
+            );
+        }
+
+        const contributions = contributionResult.data || [];
+        const withdrawals = withdrawalResult.data || [];
+
+        const paidContributions = contributions.filter(
+            row => Number(row.amount_paid || 0) > 0
+        );
+
+        const approvedWithdrawals = withdrawals.filter(row => {
+            const status = String(row.status || "").toLowerCase();
+
+            return [
+                "approved",
+                "completed",
+                "paid",
+                "successful"
+            ].includes(status);
+        });
+
+        const contributionTotal = paidContributions.reduce(
+            (sum, row) => sum + Number(row.amount_paid || 0),
+            0
+        );
+
+        const withdrawalTotal = approvedWithdrawals.reduce(
+            (sum, row) => sum + Number(
+                row.amount ??
+                row.amount_requested ??
+                row.amount_withdrawn ??
+                0
+            ),
+            0
+        );
+
+        ccsStatus(
+            "reportContributions",
+            contributionResult.error
+                ? "Contribution data unavailable"
+                : "Total recorded contributions: KSh " +
+                  ccsMoney(contributionTotal)
+        );
+
+        ccsStatus(
+            "reportWithdrawals",
+            withdrawalResult.error
+                ? "Withdrawal data unavailable"
+                : "Total approved withdrawals: KSh " +
+                  ccsMoney(withdrawalTotal)
+        );
+
+        function monthlyTotals(rows, amountField, approvedOnly) {
+            const totals = {};
+
+            rows.forEach(row => {
+                const status = String(
+                    row.status || ""
+                ).toLowerCase();
+
+                if (
+                    approvedOnly &&
+                    ![
+                        "approved",
+                        "completed",
+                        "paid",
+                        "successful"
+                    ].includes(status)
+                ) {
+                    return;
+                }
+
+                const amount = Number(
+                    row[amountField] ??
+                    row.amount ??
+                    row.amount_requested ??
+                    row.amount_withdrawn ??
+                    0
+                );
+
+                const dateValue =
+                    row.paid_at ||
+                    row.created_at ||
+                    row.date ||
+                    row.withdrawal_date;
+
+                if (!dateValue || !Number.isFinite(amount)) return;
+
+                const date = new Date(dateValue);
+
+                if (Number.isNaN(date.getTime())) return;
+
+                const key =
+                    date.getFullYear() + "-" +
+                    String(date.getMonth() + 1).padStart(2, "0");
+
+                totals[key] = (totals[key] || 0) + amount;
+            });
+
+            return totals;
+        }
+
+        function chartLabels(totals) {
+            const keys = Object.keys(totals).sort().slice(-12);
+
+            if (!keys.length) {
+                return {
+                    labels: ["No data"],
+                    values: [0]
+                };
+            }
+
+            return {
+                labels: keys,
+                values: keys.map(key => totals[key])
+            };
+        }
+
+        if (typeof Chart !== "undefined") {
+            const contributionCanvas =
+                ccsElement("contributionsChart");
+
+            if (contributionCanvas && !contributionResult.error) {
+                const totals = monthlyTotals(
+                    paidContributions,
+                    "amount_paid",
+                    false
+                );
+
+                const result = chartLabels(totals);
+
+                if (contributionsChart) {
+                    contributionsChart.destroy();
+                }
+
+                contributionsChart = new Chart(
+                    contributionCanvas,
+                    {
+                        type: "bar",
+                        data: {
+                            labels: result.labels,
+                            datasets: [{
+                                label: "Contributions (KSh)",
+                                data: result.values,
+                                borderWidth: 1
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false
+                        }
+                    }
+                );
+            }
+
+            const withdrawalCanvas =
+                ccsElement("withdrawalsChart");
+
+            if (withdrawalCanvas && !withdrawalResult.error) {
+                const totals = monthlyTotals(
+                    approvedWithdrawals,
+                    "amount",
+                    false
+                );
+
+                const result = chartLabels(totals);
+
+                if (withdrawalsChart) {
+                    withdrawalsChart.destroy();
+                }
+
+                withdrawalsChart = new Chart(
+                    withdrawalCanvas,
+                    {
+                        type: "line",
+                        data: {
+                            labels: result.labels,
+                            datasets: [{
+                                label: "Approved withdrawals (KSh)",
+                                data: result.values,
+                                borderWidth: 2,
+                                tension: 0.25
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false
+                        }
+                    }
+                );
+            }
+        } else {
+            console.warn(
+                "Chart.js is missing. Add its CDN script before app.js."
+            );
+        }
+
+        await window.loadMemberPerformance(paidContributions);
+    };
+
+    /* =========================================
+       INDIVIDUAL MEMBER PERFORMANCE
+    ========================================= */
+
+    window.loadMemberPerformance = async function (records) {
+        if (!ccsRequireLogin()) return;
+
+        const container = ccsElement("memberPerformance");
+        if (!container) return;
+
+        container.replaceChildren(
+            ccsMake("p", "Loading member performance…")
+        );
+
+        const db = ccsDb();
+
+        if (!records) {
+            const result = await db
+                .from("contributions")
+                .select("*")
+                .limit(5000);
+
+            if (result.error) {
+                container.replaceChildren(
+                    ccsMake(
+                        "p",
+                        "Unable to load member contribution records."
+                    )
+                );
+                console.error(result.error);
+                return;
+            }
+
+            records = (result.data || []).filter(
+                row => Number(row.amount_paid || 0) > 0
+            );
+        }
+
+        const totals = {};
+
+        records.forEach(row => {
+            if (!row.user_id) return;
+
+            totals[row.user_id] =
+                (totals[row.user_id] || 0) +
+                Number(row.amount_paid || 0);
+        });
+
+        const profileResult = await db
+            .from("profiles")
+            .select("id, full_name, role")
+            .limit(1000);
+
+        const names = {};
+
+        if (!profileResult.error) {
+            (profileResult.data || []).forEach(profile => {
+                names[profile.id] =
+                    profile.full_name ||
+                    profile.role ||
+                    "Member";
+            });
+        }
+
+        container.replaceChildren();
+
+        const ranked = Object.entries(totals)
+            .sort((a, b) => b[1] - a[1]);
+
+        if (!ranked.length) {
+            container.appendChild(
+                ccsMake(
+                    "p",
+                    "No contribution records are available to display."
+                )
+            );
+            return;
+        }
+
+        ranked.forEach(([userId, total], index) => {
+            const item = ccsMake("div", null, "performance-item");
+
+            item.appendChild(
+                ccsMake(
+                    "h4",
+                    (index + 1) + ". " +
+                    (names[userId] || "Member")
+                )
+            );
+
+            item.appendChild(
+                ccsMake(
+                    "p",
+                    "Recorded contributions: KSh " + ccsMoney(total)
+                )
+            );
+
+            container.appendChild(item);
+        });
+
+        if (profileResult.error) {
+            console.warn(
+                "Member names could not be loaded:",
+                profileResult.error
+            );
+        }
+    };
+
+    /* =========================================
+       FORUM
+    ========================================= */
+
+    window.loadForum = async function () {
+        if (!ccsRequireLogin()) return;
+
+        const db = ccsDb();
+        const container = ccsElement("forumPostsList");
+
+        if (!container) return;
+
+        container.replaceChildren(
+            ccsMake("p", "Loading forum posts…")
+        );
+
+        const result = await db
+            .from("forum_posts")
+            .select("*")
+            .order("created_at", { ascending: false })
+            .limit(30);
+
+        if (result.error) {
+            container.replaceChildren(
+                ccsMake(
+                    "p",
+                    "Unable to load forum posts. Check your Supabase policies."
+                )
+            );
+
+            console.error("Forum loading:", result.error);
+            return;
+        }
+
+        container.replaceChildren();
+
+        const posts = result.data || [];
+
+        if (!posts.length) {
+            container.appendChild(
+                ccsMake("p", "No forum posts yet. Start a discussion!")
+            );
+            return;
+        }
+
+        const profileResult = await db
+            .from("profiles")
+            .select("id, full_name, role")
+            .limit(1000);
+
+        const names = {};
+
+        if (!profileResult.error) {
+            (profileResult.data || []).forEach(profile => {
+                names[profile.id] =
+                    profile.full_name ||
+                    profile.role ||
+                    "Member";
+            });
+        }
+
+        for (const post of posts) {
+            const card = ccsMake("article", null, "forum-post");
+
+            if (post.is_announcement) {
+                card.appendChild(
+                    ccsMake("strong", "📢 ADMIN ANNOUNCEMENT")
+                );
+            }
+
+            card.appendChild(
+                ccsMake("h4", post.title || "Forum discussion")
+            );
+
+            card.appendChild(
+                ccsMake(
+                    "small",
+                    "By " + (names[post.user_id] || "Member") +
+                    " • " + ccsDate(post.created_at)
+                )
+            );
+
+            card.appendChild(
+                ccsMake("p", post.body || "")
+            );
+
+            const commentsBox = ccsMake("div", null, "forum-comments");
+            commentsBox.appendChild(
+                ccsMake("strong", "Comments")
+            );
+
+            const commentsResult = await db
+                .from("forum_comments")
+                .select("*")
+                .eq("post_id", post.id)
+                .order("created_at", { ascending: true });
+
+            if (commentsResult.error) {
+                commentsBox.appendChild(
+                    ccsMake("p", "Comments could not be loaded.")
+                );
+            } else if (!commentsResult.data?.length) {
+                commentsBox.appendChild(
+                    ccsMake("p", "No comments yet.")
+                );
+            } else {
+                commentsResult.data.forEach(comment => {
+                    const commentBox = ccsMake(
+                        "div",
+                        null,
+                        "forum-comment"
+                    );
+
+                    commentBox.appendChild(
+                        ccsMake(
+                            "small",
+                            (names[comment.user_id] || "Member") +
+                            " • " + ccsDate(comment.created_at)
+                        )
+                    );
+
+                    commentBox.appendChild(
+                        ccsMake("p", comment.body || "")
+                    );
+
+                    commentsBox.appendChild(commentBox);
+                });
+            }
+
+            const commentInput = ccsMake("textarea");
+            commentInput.placeholder = "Write a comment…";
+            commentInput.rows = 2;
+            commentInput.maxLength = 2000;
+
+            const commentButton = ccsMake(
+                "button",
+                "Add Comment"
+            );
+
+            commentButton.type = "button";
+
+            commentButton.addEventListener("click", async () => {
+                const body = commentInput.value.trim();
+
+                if (!body) {
+                    alert("Please write a comment first.");
+                    return;
+                }
+
+                commentButton.disabled = true;
+
+                const insertResult = await db
+                    .from("forum_comments")
+                    .insert({
+                        post_id: post.id,
+                        user_id: ccsUserId(),
+                        body
+                    });
+
+                commentButton.disabled = false;
+
+                if (insertResult.error) {
+                    alert(
+                        "Comment failed: " + insertResult.error.message
+                    );
+                    return;
+                }
+
+                await window.loadForum();
+            });
+
+            card.appendChild(commentsBox);
+            card.appendChild(commentInput);
+            card.appendChild(commentButton);
+
+            container.appendChild(card);
+        }
+    };
+
+    window.createForumPost = async function () {
+        if (!ccsRequireLogin()) return;
+
+        const titleInput = ccsElement("forumTitle");
+        const bodyInput = ccsElement("forumBody");
+
+        const title = titleInput?.value.trim();
+        const body = bodyInput?.value.trim();
+
+        if (!title || !body) {
+            ccsStatus(
+                "forumStatus",
+                "Enter both a title and a message.",
+                true
+            );
+            return;
+        }
+
+        if (title.length > 150 || body.length > 5000) {
+            ccsStatus(
+                "forumStatus",
+                "Title limit: 150 characters. Message limit: 5,000.",
+                true
+            );
+            return;
+        }
+
+        const db = ccsDb();
+
+        const result = await db
+            .from("forum_posts")
+            .insert({
+                user_id: ccsUserId(),
+                title,
+                body,
+                is_announcement: false
+            });
+
+        if (result.error) {
+            ccsStatus(
+                "forumStatus",
+                "Could not publish post: " + result.error.message,
+                true
+            );
+            return;
+        }
+
+        titleInput.value = "";
+        bodyInput.value = "";
+
+        ccsStatus("forumStatus", "Post published successfully!");
+        await window.loadForum();
+    };
+
+    /* =========================================
+       PRIVATE MEMBER MESSAGES
+    ========================================= */
+
+    window.sendPrivateMessage = async function () {
+        if (!ccsRequireLogin()) return;
+
+        const recipient = ccsElement("messageRecipient")?.value;
+        const bodyInput = ccsElement("privateMessageBody");
+        const body = bodyInput?.value.trim();
+
+        if (!recipient) {
+            ccsStatus(
+                "messageStatus",
+                "Choose a member first.",
+                true
+            );
+            return;
+        }
+
+        if (!body) {
+            ccsStatus(
+                "messageStatus",
+                "Write a message first.",
+                true
+            );
+            return;
+        }
+
+        if (body.length > 5000) {
+            ccsStatus(
+                "messageStatus",
+                "Messages must be 5,000 characters or fewer.",
+                true
+            );
+            return;
+        }
+
+        const result = await ccsDb()
+            .from("private_messages")
+            .insert({
+                sender_id: ccsUserId(),
+                recipient_id: recipient,
+                body
+            });
+
+        if (result.error) {
+            ccsStatus(
+                "messageStatus",
+                "Message failed: " + result.error.message,
+                true
+            );
+            return;
+        }
+
+        bodyInput.value = "";
+
+        ccsStatus("messageStatus", "Message sent successfully!");
+
+        await window.loadPrivateMessages();
+    };
+
+    window.loadPrivateMessages = async function () {
+        if (!ccsRequireLogin()) return;
+
+        const container = ccsElement("privateMessagesList");
+        if (!container) return;
+
+        const recipient = ccsElement("messageRecipient")?.value;
+
+        container.replaceChildren();
+
+        if (!recipient) {
+            container.appendChild(
+                ccsMake(
+                    "p",
+                    "Choose a member above to view your conversation."
+                )
+            );
+            return;
+        }
+
+        const db = ccsDb();
+        const myId = ccsUserId();
+
+        const result = await db
+            .from("private_messages")
+            .select("*")
+            .or(
+                "and(sender_id.eq." + myId +
+                ",recipient_id.eq." + recipient +
+                ")," +
+                "and(sender_id.eq." + recipient +
+                ",recipient_id.eq." + myId + ")"
+            )
+            .order("created_at", { ascending: true })
+            .limit(500);
+
+        if (result.error) {
+            container.appendChild(
+                ccsMake(
+                    "p",
+                    "Unable to load messages. Check your Supabase policies."
+                )
+            );
+
+            console.error("Private messages:", result.error);
+            return;
+        }
+
+        const messages = result.data || [];
+
+        if (!messages.length) {
+            container.appendChild(
+                ccsMake("p", "No messages yet. Start the conversation!")
+            );
+            return;
+        }
+
+        for (const message of messages) {
+            const mine = message.sender_id === myId;
+
+            const card = ccsMake(
+                "div",
+                null,
+                "private-message"
+            );
+
+            card.appendChild(
+                ccsMake(
+                    "h4",
+                    mine ? "You" : "Member"
+                )
+            );
+
+            card.appendChild(
+                ccsMake("p", message.body || "")
+            );
+
+            card.appendChild(
+                ccsMake("small", ccsDate(message.created_at))
+            );
+
+            container.appendChild(card);
+        }
+
+        const unreadIds = messages
+            .filter(message =>
+                message.recipient_id === myId &&
+                !message.read_at
+            )
+            .map(message => message.id);
+
+        if (unreadIds.length) {
+            const updateResult = await db
+                .from("private_messages")
+                .update({ read_at: new Date().toISOString() })
+                .in("id", unreadIds);
+
+            if (updateResult.error) {
+                console.warn(
+                    "Could not mark messages as read:",
+                    updateResult.error
+                );
+            }
+        }
+
+        container.scrollTop = container.scrollHeight;
+    };
+
+    /* =========================================
+       AUTOMATIC REFRESH WHEN RECIPIENT CHANGES
+    ========================================= */
+
+    document.addEventListener("DOMContentLoaded", function () {
+        const recipient = ccsElement("messageRecipient");
+
+        if (recipient) {
+            recipient.addEventListener("change", function () {
+                window.loadPrivateMessages();
+            });
+        }
+
+        const whatsapp = ccsElement("whatsappGroupLink");
+
+        if (whatsapp) {
+            whatsapp.href = CCS_WHATSAPP_LINK;
+            whatsapp.target = "_blank";
+            whatsapp.rel = "noopener noreferrer";
+        }
+
+        console.log("CCS VSN30 new features loaded.");
+    });
+
+})();
+/* =========================================================
+CCS VSN30 — COMMUNITY, GROUP CHAT & REPORTS PATCH
+Preserves the existing Supabase connection and design.
+========================================================= */
+
+(function () {
+"use strict";
+
+console.log("CCS VSN30 community and reports patch loaded.");
+
+/* ---------- SHARED HELPERS ---------- */
+
+function ccsPatchDb() {
+    return window.supabaseClient ||
+        (typeof supabaseClient !== "undefined"
+            ? supabaseClient
+            : null);
+}
+
+function ccsPatchProfile() {
+    return window.currentProfile ||
+        (typeof currentProfile !== "undefined"
+            ? currentProfile
+            : null);
+}
+
+function ccsEscape(value) {
+    return String(value ?? "").replace(/[&<>"']/g, function (char) {
+        return {
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#39;"
+        }[char];
+    });
+}
+
+function ccsStatus(id, message, isError) {
+    const element = document.getElementById(id);
+    if (!element) return;
+
+    element.textContent = message;
+    element.style.color = isError ? "#ff7777" : "#38c98a";
+}
+
+function ccsFormatMoney(value) {
+    return Number(value || 0).toLocaleString("en-KE", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    });
+}
+
+/* ---------- COMMUNITY NAVIGATION ---------- */
+
+window.openCommunity = function () {
+    const community = document.querySelector(".community-screen");
+
+    if (community) {
+        community.classList.add("community-open");
+        community.setAttribute("aria-hidden", "false");
+    }
+
+    if (typeof window.loadGroupChat === "function") {
+        window.loadGroupChat();
+    }
+};
+
+window.closeCommunity = function () {
+    const community = document.querySelector(".community-screen");
+
+    if (community) {
+        community.classList.remove("community-open");
+        community.setAttribute("aria-hidden", "true");
+    }
+};
+
+window.openCommunityTab = function (tab) {
+    const community = document.querySelector(".community-screen");
+
+    if (community) {
+        community.classList.add("community-open");
+    }
+
+    const groupTab = document.getElementById("groupChatTab");
+    const discussionTab = document.getElementById("discussionsTab");
+
+    const groupContent = document.getElementById("groupChatContent");
+    const discussionContent = document.getElementById("discussionsContent");
+
+    const wantsGroup = /group|chat/i.test(String(tab || ""));
+
+    if (groupContent) {
+        groupContent.style.display = wantsGroup ? "block" : "none";
+    }
+
+    if (discussionContent) {
+        discussionContent.style.display = wantsGroup ? "none" : "block";
+    }
+
+    if (groupTab) {
+        groupTab.classList.toggle("active", wantsGroup);
+    }
+
+    if (discussionTab) {
+        discussionTab.classList.toggle("active", !wantsGroup);
+    }
+
+    if (wantsGroup && typeof window.loadGroupChat === "function") {
+        window.loadGroupChat();
+    }
+
+    if (!wantsGroup && typeof window.loadForum === "function") {
+        window.loadForum();
+    }
+};
+
+/* ---------- GROUP CHAT ---------- */
+
+let groupChatLoading = false;
+let groupChatTimer = null;
+
+window.loadGroupChat = async function () {
+    if (groupChatLoading) return;
+
+    const db = ccsPatchDb();
+    const profile = ccsPatchProfile();
+    const container = document.getElementById("groupChatMessages");
+
+    if (!db || !profile || !container) return;
+
+    groupChatLoading = true;
+
+    try {
+        const { data: messages, error } = await db
+            .from("group_chat_messages")
+            .select("id,user_id,body,created_at")
+            .order("created_at", { ascending: true })
+            .limit(200);
+
+        if (error) throw error;
+
+        const userIds = [...new Set(
+            (messages || []).map(message => message.user_id).filter(Boolean)
+        )];
+
+        let profilesById = {};
+
+        if (userIds.length) {
+            const { data: profiles, error: profilesError } = await db
+                .from("profiles")
+                .select("id,full_name,role")
+                .in("id", userIds);
+
+            if (profilesError) {
+                console.warn("Could not load chat member names:", profilesError.message);
+            } else {
+                (profiles || []).forEach(member => {
+                    profilesById[member.id] = member;
+                });
+            }
+        }
+
+        if (!messages || messages.length === 0) {
+            container.innerHTML =
+                '<p class="chat-empty">No messages yet. Start the conversation!</p>';
+            return;
+        }
+
+        container.innerHTML = messages.map(message => {
+            const sender = profilesById[message.user_id] || {};
+            const ownMessage = message.user_id === profile.id;
+
+            const time = message.created_at
+                ? new Date(message.created_at).toLocaleString("en-KE", {
+                    dateStyle: "short",
+                    timeStyle: "short"
+                })
+                : "";
+
+            return `
+                <div class="chat-message ${ownMessage ? "own-message" : ""}">
+                    <div class="chat-message-header">
+                        <strong>${ccsEscape(
+                            ownMessage ? "You" : (sender.full_name || "Member")
+                        )}</strong>
+                        <small>${ccsEscape(time)}</small>
+                    </div>
+                    <div class="chat-message-body">${ccsEscape(message.body)}</div>
+                </div>
+            `;
+        }).join("");
+
+        container.scrollTop = container.scrollHeight;
+
+    } catch (error) {
+        console.error("Group chat loading failed:", error);
+        ccsStatus(
+            "groupChatStatus",
+            "Could not load messages. Check your connection and chat-table permissions.",
+            true
+        );
+    } finally {
+        groupChatLoading = false;
+    }
+};
+
+window.sendGroupChatMessage = async function () {
+    const db = ccsPatchDb();
+    const profile = ccsPatchProfile();
+    const input = document.getElementById("groupChatInput");
+
+    if (!db || !profile) {
+        ccsStatus("groupChatStatus", "Please log in before sending messages.", true);
+        return;
+    }
+
+    if (!input) {
+        console.error("Missing HTML element: groupChatInput");
+        return;
+    }
+
+    const body = input.value.trim();
+
+    if (!body) {
+        ccsStatus("groupChatStatus", "Type a message first.", true);
+        return;
+    }
+
+    if (body.length > 2000) {
+        ccsStatus("groupChatStatus", "Messages must be 2,000 characters or fewer.", true);
+        return;
+    }
+
+    const sendButton = document.querySelector(
+        '[onclick*="sendGroupChatMessage"]'
+    );
+
+    if (sendButton) sendButton.disabled = true;
+
+    try {
+        const { error } = await db
+            .from("group_chat_messages")
+            .insert({
+                user_id: profile.id,
+                body: body
+            });
+
+        if (error) throw error;
+
+        input.value = "";
+        ccsStatus("groupChatStatus", "Message sent.", false);
+
+        await window.loadGroupChat();
+
+    } catch (error) {
+        console.error("Sending group chat message failed:", error);
+
+        ccsStatus(
+            "groupChatStatus",
+            "Message was not sent. Check the group_chat_messages table and its RLS policies.",
+            true
+        );
+    } finally {
+        if (sendButton) sendButton.disabled = false;
+    }
+};
+
+/* Refresh messages periodically while the page is visible. */
+
+function startGroupChatRefresh() {
+    if (groupChatTimer) clearInterval(groupChatTimer);
+
+    groupChatTimer = setInterval(function () {
+        const community = document.querySelector(".community-screen");
+
+        if (
+            document.visibilityState === "visible" &&
+            community &&
+            community.classList.contains("community-open")
+        ) {
+            window.loadGroupChat();
+        }
+    }, 15000);
+}
+
+startGroupChatRefresh();
+
+/* ---------- FINANCIAL REPORTS ---------- */
+
+window.loadReports = async function () {
+    const db = ccsPatchDb();
+
+    if (!db) {
+        console.error("Supabase is not initialized.");
+        return;
+    }
+
+    const contributionElement = document.getElementById("reportContributions");
+    const withdrawalElement = document.getElementById("reportWithdrawals");
+
+    if (contributionElement) contributionElement.textContent = "Loading...";
+    if (withdrawalElement) withdrawalElement.textContent = "Loading...";
+
+    try {
+        const [contributionResult, withdrawalResult] = await Promise.all([
+            db.from("contributions")
+                .select("id,user_id,amount_paid,status,created_at")
+                .limit(5000),
+
+            db.from("withdrawals")
+                .select("id,requested_by,amount,status,created_at")
+                .limit(5000)
+        ]);
+
+        if (contributionResult.error) throw contributionResult.error;
+        if (withdrawalResult.error) throw withdrawalResult.error;
+
+        const contributions = contributionResult.data || [];
+        const withdrawals = withdrawalResult.data || [];
+
+        const totalContributions = contributions.reduce((sum, item) => {
+            return sum + Math.max(0, Number(item.amount_paid) || 0);
+        }, 0);
+
+        const successfulStatuses = [
+            "approved",
+            "completed",
+            "paid",
+            "successful"
+        ];
+
+        const approvedWithdrawals = withdrawals.filter(item =>
+            successfulStatuses.includes(
+                String(item.status || "").toLowerCase()
+            )
+        );
+
+        const totalWithdrawals = approvedWithdrawals.reduce((sum, item) => {
+            return sum + Math.max(0, Number(item.amount) || 0);
+        }, 0);
+
+        if (contributionElement) {
+            contributionElement.textContent =
+                "KSh " + ccsFormatMoney(totalContributions);
+        }
+
+        if (withdrawalElement) {
+            withdrawalElement.textContent =
+                "KSh " + ccsFormatMoney(totalWithdrawals);
+        }
+
+        /* Update charts only when the existing canvases are available. */
+
+        const contributionCanvas = document.getElementById("contributionsChart");
+        const withdrawalCanvas = document.getElementById("withdrawalsChart");
+
+        if (typeof window.Chart !== "undefined") {
+            const monthlyTotals = function (rows, amountField) {
+                const totals = {};
+
+                rows.forEach(row => {
+                    if (!row.created_at) return;
+
+                    const date = new Date(row.created_at);
+                    if (Number.isNaN(date.getTime())) return;
+
+                    const key =
+                        date.getFullYear() + "-" +
+                        String(date.getMonth() + 1).padStart(2, "0");
+
+                    totals[key] = (totals[key] || 0) +
+                        Math.max(0, Number(row[amountField]) || 0);
+                });
+
+                const keys = Object.keys(totals).sort();
+
+                return {
+                    labels: keys,
+                    values: keys.map(key => totals[key])
+                };
+            };
+
+            function updateChart(canvas, chartKey, rows, amountField) {
+                if (!canvas) return;
+
+                const totals = monthlyTotals(rows, amountField);
+
+                if (window[chartKey]) {
+                    window[chartKey].destroy();
+                }
+
+                window[chartKey] = new window.Chart(canvas, {
+                    type: "bar",
+                    data: {
+                        labels: totals.labels,
+                        datasets: [{
+                            label: "Amount (KSh)",
+                            data: totals.values
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true
+                            }
+                        }
+                    }
+                });
+            }
+
+            updateChart(
+                contributionCanvas,
+                "ccsContributionsReportChart",
+                contributions,
+                "amount_paid"
+            );
+
+            updateChart(
+                withdrawalCanvas,
+                "ccsWithdrawalsReportChart",
+                approvedWithdrawals,
+                "amount"
+            );
+        }
+
+        if (typeof window.loadMemberPerformance === "function") {
+            await window.loadMemberPerformance(contributions);
+        }
+
+    } catch (error) {
+        console.error("Financial reports failed:", error);
+
+        if (contributionElement) {
+            contributionElement.textContent = "Unable to load";
+        }
+
+        if (withdrawalElement) {
+            withdrawalElement.textContent = "Unable to load";
+        }
+
+        alert(
+            "Reports could not be loaded. Check the browser console and Supabase permissions."
+        );
+    }
+};
+
+})();
+/* =====================================================
+   CCS VSN30 — GROUP CHAT DASHBOARD
+   Reply • Edit Own Messages • Resubmit • Edited Label
+===================================================== */
+
+(function () {
+    "use strict";
+
+    let replyToMessage = null;
+    let editingChatMessage = null;
+    let chatRequestInProgress = false;
+
+    function chatDb() {
+        return window.supabaseClient ||
+            (typeof supabaseClient !== "undefined"
+                ? supabaseClient
+                : null);
+    }
+
+    function chatProfile() {
+        return window.currentProfile ||
+            (typeof currentProfile !== "undefined"
+                ? currentProfile
+                : null);
+    }
+
+    function chatElement(id) {
+        return document.getElementById(id);
+    }
+
+    function chatStatus(message, isError) {
+        const element = chatElement("groupChatStatus");
+
+        if (!element) return;
+
+        element.textContent = message;
+
+        element.style.color = isError
+            ? "#ff7777"
+            : "#5bdcff";
+    }
+
+    function chatEscape(value) {
+        return String(value ?? "").replace(
+            /[&<>"']/g,
+            function (character) {
+                return {
+                    "&": "&amp;",
+                    "<": "&lt;",
+                    ">": "&gt;",
+                    '"': "&quot;",
+                    "'": "&#39;"
+                }[character];
+            }
+        );
+    }
+
+    function chatDate(value) {
+        if (!value) return "";
+
+        const date = new Date(value);
+
+        if (Number.isNaN(date.getTime())) {
+            return "";
+        }
+
+        return date.toLocaleString("en-KE", {
+            dateStyle: "medium",
+            timeStyle: "short"
+        });
+    }
+
+    function requireChatLogin() {
+        if (!chatDb() || !chatProfile()?.id) {
+            chatStatus(
+                "Please log in before using Group Chat.",
+                true
+            );
+
+            return false;
+        }
+
+        return true;
+    }
+
+
+    /* =========================================
+       OPEN CHAT DASHBOARD
+    ========================================= */
+
+    window.openGroupChatDashboard = async function () {
+        if (!requireChatLogin()) return;
+
+        const dashboard = chatElement("chatDashboard");
+
+        if (!dashboard) {
+            alert("The Group Chat dashboard HTML is missing.");
+            return;
+        }
+
+        dashboard.classList.add("chat-dashboard-open");
+
+        dashboard.setAttribute("aria-hidden", "false");
+
+        document.body.classList.add("chat-dashboard-active");
+
+        await window.loadGroupChat();
+
+        const input = chatElement("groupChatInput");
+
+        if (input) {
+            input.focus();
+        }
+    };
+
+
+    /* =========================================
+       CLOSE CHAT DASHBOARD
+    ========================================= */
+
+    window.closeGroupChatDashboard = function () {
+        const dashboard = chatElement("chatDashboard");
+
+        if (dashboard) {
+            dashboard.classList.remove("chat-dashboard-open");
+
+            dashboard.setAttribute("aria-hidden", "true");
+        }
+
+        document.body.classList.remove("chat-dashboard-active");
+    };
+
+
+    /* =========================================
+       REPLY PREVIEW
+    ========================================= */
+
+    window.cancelChatReply = function () {
+        replyToMessage = null;
+
+        const preview = chatElement("chatReplyPreview");
+
+        if (preview) {
+            preview.style.display = "none";
+        }
+    };
+
+
+    function startChatReply(message) {
+        replyToMessage = message;
+
+        // Editing and replying are separate operations.
+        if (editingChatMessage) {
+            window.cancelChatEdit();
+        }
+
+        const preview = chatElement("chatReplyPreview");
+        const previewText = chatElement("chatReplyText");
+        const input = chatElement("groupChatInput");
+
+        if (preview) {
+            preview.style.display = "flex";
+        }
+
+        if (previewText) {
+            previewText.textContent =
+                (message.senderName || "Member") +
+                ": " +
+                (message.body || "");
+        }
+
+        if (input) {
+            input.focus();
+        }
+
+        chatStatus("Replying to selected message.", false);
+    }
+
+
+    /* =========================================
+       EDIT OWN MESSAGE
+    ========================================= */
+
+    window.startChatEdit = function (message) {
+        const profile = chatProfile();
+
+        if (!profile || message.user_id !== profile.id) {
+            chatStatus(
+                "You can only edit your own messages.",
+                true
+            );
+
+            return;
+        }
+
+        if (replyToMessage) {
+            window.cancelChatReply();
+        }
+
+        editingChatMessage = message;
+
+        const input = chatElement("groupChatInput");
+        const submitButton = chatElement("groupChatSubmitButton");
+        const cancelButton = chatElement("groupChatCancelEditButton");
+
+        if (input) {
+            input.value = message.body || "";
+            input.focus();
+        }
+
+        if (submitButton) {
+            submitButton.textContent = "Save Changes / Resubmit";
+        }
+
+        if (cancelButton) {
+            cancelButton.style.display = "inline-block";
+        }
+
+        chatStatus(
+            "Editing your message. Save Changes / Resubmit when ready.",
+            false
+        );
+    };
+
+
+    /* =========================================
+       CANCEL EDIT
+    ========================================= */
+
+    window.cancelChatEdit = function () {
+        editingChatMessage = null;
+
+        const input = chatElement("groupChatInput");
+        const submitButton = chatElement("groupChatSubmitButton");
+        const cancelButton = chatElement("groupChatCancelEditButton");
+
+        if (input) {
+            input.value = "";
+        }
+
+        if (submitButton) {
+            submitButton.textContent = "Send Message";
+        }
+
+        if (cancelButton) {
+            cancelButton.style.display = "none";
+        }
+
+        chatStatus("", false);
+    };
+
+
+    /* =========================================
+       LOAD GROUP CHAT
+    ========================================= */
+
+    window.loadGroupChat = async function () {
+        if (chatRequestInProgress) return;
+
+        if (!requireChatLogin()) return;
+
+        const db = chatDb();
+        const profile = chatProfile();
+        const container = chatElement("groupChatMessages");
+
+        if (!container) return;
+
+        chatRequestInProgress = true;
+
+        try {
+            const result = await db
+                .from("group_chat_messages")
+                .select(
+                    "id,user_id,body,created_at,reply_to_id,edited_at"
+                )
+                .order("created_at", {
+                    ascending: true
+                })
+                .limit(200);
+
+            if (result.error) {
+                throw result.error;
+            }
+
+            const messages = result.data || [];
+
+            const userIds = [
+                ...new Set(
+                    messages
+                        .map(message => message.user_id)
+                        .filter(Boolean)
+                )
+            ];
+
+            const profilesById = {};
+
+            if (userIds.length) {
+                const profileResult = await db
+                    .from("profiles")
+                    .select("id,full_name,role")
+                    .in("id", userIds);
+
+                if (profileResult.error) {
+                    throw profileResult.error;
+                }
+
+                (profileResult.data || []).forEach(member => {
+                    profilesById[member.id] = member;
+                });
+            }
+
+            const messagesById = {};
+
+            messages.forEach(message => {
+                messagesById[message.id] = message;
+            });
+
+            if (!messages.length) {
+                container.innerHTML =
+                    '<p class="chat-empty">' +
+                    'No messages yet. Start the conversation!' +
+                    '</p>';
+
+                chatStatus("", false);
+
+                return;
+            }
+
+            container.replaceChildren();
+
+            messages.forEach(message => {
+                const sender = profilesById[message.user_id] || {};
+
+                const ownMessage =
+                    message.user_id === profile.id;
+
+                const senderName = ownMessage
+                    ? "You"
+                    : (
+                        sender.full_name ||
+                        sender.role ||
+                        "Member"
+                    );
+
+                message.senderName = senderName;
+
+                const card = document.createElement("article");
+
+                card.className =
+                    "chat-message" +
+                    (ownMessage ? " own-message" : "");
+
+                card.dataset.messageId = message.id;
+
+
+                // Message header
+
+                const header = document.createElement("div");
+
+                header.className = "chat-message-header";
+
+                const author = document.createElement("strong");
+
+                author.className = "chat-message-author";
+
+                author.textContent = senderName;
+
+                const timestamp = document.createElement("small");
+
+                timestamp.textContent = chatDate(message.created_at);
+
+                header.append(author, timestamp);
+
+                card.appendChild(header);
+
+
+                // Referenced message, if this is a reply
+
+                if (message.reply_to_id) {
+                    const original =
+                        messagesById[message.reply_to_id];
+
+                    const replyBox = document.createElement("div");
+
+                    replyBox.className = "chat-reply-preview";
+
+                    replyBox.style.display = "block";
+
+                    const replyHeading =
+                        document.createElement("strong");
+
+                    replyHeading.textContent = original
+                        ? "Replying to " +
+                            (
+                                profilesById[original.user_id]?.full_name ||
+                                profilesById[original.user_id]?.role ||
+                                "Member"
+                            )
+                        : "Reply to an earlier message";
+
+                    const replyBody = document.createElement("p");
+
+                    replyBody.textContent = original
+                        ? original.body
+                        : "The original message is unavailable.";
+
+                    replyBox.append(replyHeading, replyBody);
+
+                    card.appendChild(replyBox);
+                }
+
+
+                // Message text
+
+                const body = document.createElement("div");
+
+                body.className = "chat-message-body";
+
+                body.textContent = message.body || "";
+
+                card.appendChild(body);
+
+
+                // Edited indicator
+
+                if (message.edited_at) {
+                    const edited = document.createElement("small");
+
+                    edited.className = "chat-message-edited";
+
+                    edited.textContent = "Edited";
+
+                    edited.title =
+                        "Last edited " + chatDate(message.edited_at);
+
+                    card.appendChild(edited);
+                }
+
+
+                // Actions
+
+                const actions = document.createElement("div");
+
+                actions.className = "chat-message-actions";
+
+                const replyButton = document.createElement("button");
+
+                replyButton.type = "button";
+
+                replyButton.className = "chat-reply-button";
+
+                replyButton.textContent = "↩ Reply";
+
+                replyButton.addEventListener("click", function () {
+                    startChatReply(message);
+                });
+
+                actions.appendChild(replyButton);
+
+
+                // Only the author gets the Edit button.
+
+                if (ownMessage) {
+                    const editButton = document.createElement("button");
+
+                    editButton.type = "button";
+
+                    editButton.className = "chat-edit-button";
+
+                    editButton.textContent = "✎ Edit";
+
+                    editButton.addEventListener("click", function () {
+                        window.startChatEdit(message);
+                    });
+
+                    actions.appendChild(editButton);
+                }
+
+                card.appendChild(actions);
+
+                container.appendChild(card);
+            });
+
+            container.scrollTop = container.scrollHeight;
+
+            chatStatus("", false);
+
+        } catch (error) {
+            console.error("Group Chat loading failed:", error);
+
+            chatStatus(
+                "Unable to load messages: " +
+                (error.message || "Check your connection and permissions."),
+                true
+            );
+
+        } finally {
+            chatRequestInProgress = false;
+        }
+    };
+
+
+    /* =========================================
+       SEND, REPLY OR SAVE EDIT
+    ========================================= */
+
+    window.sendGroupChatMessage = async function () {
+        if (!requireChatLogin()) return;
+
+        const db = chatDb();
+        const profile = chatProfile();
+        const input = chatElement("groupChatInput");
+        const submitButton = chatElement("groupChatSubmitButton");
+
+        if (!input) return;
+
+        const body = input.value.trim();
+
+        if (!body) {
+            chatStatus("Please type a message first.", true);
+            return;
+        }
+
+        if (body.length > 3000) {
+            chatStatus(
+                "Messages cannot exceed 3,000 characters.",
+                true
+            );
+
+            return;
+        }
+
+        if (submitButton) {
+            submitButton.disabled = true;
+        }
+
+        try {
+            /*
+             * EDIT EXISTING MESSAGE
+             */
+
+            if (editingChatMessage) {
+                const messageBeingEdited = editingChatMessage;
+
+                if (
+                    messageBeingEdited.user_id !== profile.id
+                ) {
+                    throw new Error(
+                        "You can only edit your own messages."
+                    );
+                }
+
+                const updateResult = await db
+                    .from("group_chat_messages")
+                    .update({
+                        body: body,
+                        edited_at: new Date().toISOString()
+                    })
+                    .eq("id", messageBeingEdited.id)
+                    .eq("user_id", profile.id)
+                    .select("id")
+                    .maybeSingle();
+
+                if (updateResult.error) {
+                    throw updateResult.error;
+                }
+
+                if (!updateResult.data) {
+                    throw new Error(
+                        "The message was not updated. Check your permissions."
+                    );
+                }
+
+                editingChatMessage = null;
+
+                input.value = "";
+
+                if (submitButton) {
+                    submitButton.textContent = "Send Message";
+                }
+
+                const cancelButton =
+                    chatElement("groupChatCancelEditButton");
+
+                if (cancelButton) {
+                    cancelButton.style.display = "none";
+                }
+
+                chatStatus(
+                    "Changes saved and message resubmitted successfully.",
+                    false
+                );
+
+                await window.loadGroupChat();
+
+                return;
+            }
+
+
+            /*
+             * SEND NEW MESSAGE OR REPLY
+             */
+
+            const newMessage = {
+                user_id: profile.id,
+                body: body
+            };
+
+            if (replyToMessage) {
+                newMessage.reply_to_id = replyToMessage.id;
+            }
+
+            const insertResult = await db
+                .from("group_chat_messages")
+                .insert(newMessage);
+
+            if (insertResult.error) {
+                throw insertResult.error;
+            }
+
+            input.value = "";
+
+            replyToMessage = null;
+
+            const preview = chatElement("chatReplyPreview");
+
+            if (preview) {
+                preview.style.display = "none";
+            }
+
+            chatStatus("Message sent successfully.", false);
+
+            await window.loadGroupChat();
+
+        } catch (error) {
+            console.error("Group Chat message operation failed:", error);
+
+            chatStatus(
+                "Operation failed: " +
+                (error.message || "Please try again."),
+                true
+            );
+
+        } finally {
+            if (submitButton) {
+                submitButton.disabled = false;
+            }
+        }
+    };
+
+
+    /* =========================================
+       CHAT REFRESH
+    ========================================= */
+
+    let refreshTimer = null;
+
+    function startChatRefresh() {
+        if (refreshTimer) {
+            clearInterval(refreshTimer);
+        }
+
+        refreshTimer = setInterval(function () {
+            const dashboard = chatElement("chatDashboard");
+
+            if (
+                document.visibilityState === "visible" &&
+                dashboard &&
+                dashboard.classList.contains("chat-dashboard-open")
+            ) {
+                window.loadGroupChat();
+            }
+        }, 15000);
+    }
+
+    startChatRefresh();
+
+
+    /* =========================================
+       KEYBOARD SHORTCUTS
+    ========================================= */
+
+    document.addEventListener("keydown", function (event) {
+        if (event.key === "Escape") {
+            const dashboard = chatElement("chatDashboard");
+
+            if (
+                dashboard &&
+                dashboard.classList.contains("chat-dashboard-open")
+            ) {
+                window.closeGroupChatDashboard();
+            }
+        }
+    });
+
+    console.log(
+        "CCS VSN30 Group Chat Dashboard features loaded."
+    );
+
+})();
+/* =====================================================
+   CCS VSN30
+   ANNOUNCEMENTS & NOTIFICATIONS
+   Uses forum_posts and announcement_reads
+===================================================== */
+
+(function () {
+    "use strict";
+
+    // Prevent this feature from being initialized twice.
+    if (window.ccsAnnouncementsInitialized) {
+        return;
+    }
+
+    window.ccsAnnouncementsInitialized = true;
+
+    const ANNOUNCEMENT_CATEGORIES = [
+        "Important Notice",
+        "Contributions",
+        "Meetings",
+        "Withdrawals",
+        "General Update"
+    ];
+
+    let announcementLoadInProgress = false;
+
+    // -------------------------------------------------
+    // CURRENT PROFILE
+    // -------------------------------------------------
+
+    function getAnnouncementProfile() {
+        if (
+            typeof currentProfile !== "undefined" &&
+            currentProfile
+        ) {
+            return currentProfile;
+        }
+
+        return window.currentProfile || null;
+    }
+
+    function getAnnouncementRole() {
+        const profile = getAnnouncementProfile();
+
+        return String(profile?.role || "")
+            .trim()
+            .toLowerCase();
+    }
+
+    function isAnnouncementAdmin() {
+        return getAnnouncementRole() === "admin";
+    }
+
+    function getAnnouncementUserId() {
+        const profile = getAnnouncementProfile();
+
+        return profile?.id || null;
+    }
+
+    // -------------------------------------------------
+    // ELEMENT HELPERS
+    // -------------------------------------------------
+
+    function announcementElement(id) {
+        return document.getElementById(id);
+    }
+
+    function setAnnouncementStatus(message, isError) {
+        const element = announcementElement(
+            "announcementPublishStatus"
+        );
+
+        if (!element) return;
+
+        element.textContent = message;
+
+        element.style.color = isError
+            ? "#ff8a8a"
+            : "#86efac";
+    }
+
+    function setUnreadAnnouncementCount(count) {
+        const badge = announcementElement(
+            "unreadAnnouncementCount"
+        );
+
+        if (!badge) return;
+
+        badge.textContent = String(count);
+
+        badge.style.display = count > 0
+            ? "inline-flex"
+            : "none";
+
+        badge.setAttribute(
+            "aria-label",
+            count + " unread announcements"
+        );
+    }
+
+    function escapeAnnouncementText(value) {
+        return String(value ?? "");
+    }
+
+    // -------------------------------------------------
+    // SHOW ADMIN FORM
+    // -------------------------------------------------
+
+    function updateAnnouncementPermissions() {
+        const adminForm = announcementElement(
+            "announcementAdminForm"
+        );
+
+        if (!adminForm) return;
+
+        adminForm.style.display = isAnnouncementAdmin()
+            ? "block"
+            : "none";
+    }
+
+    // -------------------------------------------------
+    // CREATE SAFE ANNOUNCEMENT ELEMENT
+    // -------------------------------------------------
+
+    function createAnnouncementCard(
+        announcement,
+        isRead
+    ) {
+        const card = document.createElement("article");
+
+        card.className = "announcement-item";
+
+        if (!isRead) {
+            card.classList.add("announcement-unread");
+        }
+
+        const heading = document.createElement("h4");
+
+        heading.textContent = escapeAnnouncementText(
+            announcement.title
+        );
+
+        const category = document.createElement("span");
+
+        category.className = "announcement-category";
+
+        category.textContent =
+            announcement.category || "General Update";
+
+        const date = document.createElement("p");
+
+        date.className = "announcement-date";
+
+        if (announcement.created_at) {
+            const parsedDate = new Date(
+                announcement.created_at
+            );
+
+            date.textContent = Number.isNaN(
+                parsedDate.getTime()
+            )
+                ? ""
+                : parsedDate.toLocaleString();
+        }
+
+        const body = document.createElement("p");
+
+        body.className = "announcement-body";
+
+        body.style.whiteSpace = "pre-wrap";
+
+        body.textContent = escapeAnnouncementText(
+            announcement.body
+        );
+
+        card.appendChild(category);
+        card.appendChild(heading);
+        card.appendChild(date);
+        card.appendChild(body);
+
+        if (!isRead) {
+            const readButton = document.createElement("button");
+
+            readButton.type = "button";
+
+            readButton.textContent = "Mark as Read";
+
+            readButton.addEventListener(
+                "click",
+                function () {
+                    markAnnouncementAsRead(
+                        announcement.id,
+                        card,
+                        readButton
+                    );
+                }
+            );
+
+            card.appendChild(readButton);
+        } else {
+            const readLabel = document.createElement("p");
+
+            readLabel.className = "announcement-read-label";
+
+            readLabel.textContent = "✓ Read";
+
+            card.appendChild(readLabel);
+        }
+
+        return card;
+    }
+
+    // -------------------------------------------------
+    // LOAD ANNOUNCEMENTS
+    // -------------------------------------------------
+
+    window.loadAnnouncements = async function () {
+        if (announcementLoadInProgress) return;
+
+        const list = announcementElement(
+            "announcementsList"
+        );
+
+        if (!list) return;
+
+        const profile = getAnnouncementProfile();
+        const userId = getAnnouncementUserId();
+
+        updateAnnouncementPermissions();
+
+        if (!profile || !userId) {
+            list.textContent =
+                "Please log in to view announcements.";
+
+            setUnreadAnnouncementCount(0);
+
+            return;
+        }
+
+        if (
+            typeof supabaseClient === "undefined" ||
+            !supabaseClient
+        ) {
+            list.textContent =
+                "The database connection is unavailable.";
+
+            return;
+        }
+
+        announcementLoadInProgress = true;
+
+        list.textContent = "Loading announcements...";
+
+        try {
+            const {
+                data: announcements,
+                error: announcementsError
+            } = await supabaseClient
+                .from("forum_posts")
+                .select(
+                    "id, user_id, title, body, category, created_at"
+                )
+                .eq("is_announcement", true)
+                .order("created_at", {
+                    ascending: false
+                });
+
+            if (announcementsError) {
+                throw announcementsError;
+            }
+
+            if (
+                !Array.isArray(announcements) ||
+                announcements.length === 0
+            ) {
+                list.textContent =
+                    "There are no announcements yet.";
+
+                setUnreadAnnouncementCount(0);
+
+                return;
+            }
+
+            const announcementIds = announcements.map(
+                item => item.id
+            );
+
+            const {
+                data: receipts,
+                error: receiptsError
+            } = await supabaseClient
+                .from("announcement_reads")
+                .select("announcement_id")
+                .eq("user_id", userId)
+                .in("announcement_id", announcementIds);
+
+            if (receiptsError) {
+                throw receiptsError;
+            }
+
+            const readIds = new Set(
+                (receipts || []).map(
+                    receipt => receipt.announcement_id
+                )
+            );
+
+            const unreadAnnouncements = announcements.filter(
+function (item) {
+return !readIds.has(item.id);
+}
+);
+
+        setUnreadAnnouncementCount(
+            unreadAnnouncements.length
+        );
+
+        list.replaceChildren();
+
+        if (unreadAnnouncements.length === 0) {
+            const message = document.createElement("p");
+
+            message.textContent =
+                "You're all caught up! No unread announcements.";
+
+            list.appendChild(message);
+        } else {
+            unreadAnnouncements.forEach(
+                function (announcement) {
+                    list.appendChild(
+                        createAnnouncementCard(
+                            announcement,
+                            false
+                        )
+                    );
+                }
+            );
+        }
+
+} catch (error) {
+console.error("CCS announcement loading error:", error);
+
+        list.textContent = "Could not load announcements: " + (error && error.message ? error.message : "Unknown error");
+
+    } finally {
+        announcementLoadInProgress = false;
+    }
+};
+
+    // -------------------------------------------------
+    // MARK ANNOUNCEMENT AS READ
+    // -------------------------------------------------
+window.markAnnouncementAsRead = async function (
+announcementId,
+card,
+button
+) {
+const userId = getAnnouncementUserId();
+
+if (!userId) {
+    alert("Please log in first.");
+    return;
+}
+
+if (!supabaseClient) {
+    alert("Database connection is unavailable.");
+    return;
+}
+
+if (button) {
+    button.disabled = true;
+    button.textContent = "Saving...";
+}
+
+try {
+    const { error } = await supabaseClient
+        .from("announcement_reads")
+        .insert({
+            announcement_id: announcementId,
+            user_id: userId
+        });
+
+    if (error && error.code !== "23505") {
+        throw error;
+    }
+
+    // Remove the announcement immediately from this member's list.
+    if (card) {
+        card.remove();
+    }
+
+    // Recalculate the unread count from the remaining cards.
+    const list = document.getElementById(
+        "announcementsList"
+    );
+
+    const remaining = list
+        ? list.querySelectorAll(
+            ".announcement-item.announcement-unread"
+        ).length
+        : 0;
+
+    setUnreadAnnouncementCount(remaining);
+
+    if (remaining === 0 && list) {
+        const message = document.createElement("p");
+
+        message.textContent =
+            "You're all caught up! No unread announcements.";
+
+        list.replaceChildren(message);
+    }
+
+} catch (error) {
+    console.error(
+        "Mark announcement as read error:",
+        error
+    );
+
+    alert(
+        "Could not mark this announcement as read: " +
+        (error.message || "Please try again.")
+    );
+
+    if (button) {
+        button.disabled = false;
+        button.textContent = "Mark as Read";
+    }
+}
+
+};
+    // -------------------------------------------------
+    // PUBLISH ANNOUNCEMENT
+    // -------------------------------------------------
+
+    window.publishAnnouncement = async function () {
+        if (!isAnnouncementAdmin()) {
+            setAnnouncementStatus(
+                "Only the Admin can publish announcements.",
+                true
+            );
+
+            return;
+        }
+
+        const profile = getAnnouncementProfile();
+
+        const userId = getAnnouncementUserId();
+
+        const title = (
+            announcementElement("announcementTitle")?.value ||
+            ""
+        ).trim();
+
+        const body = (
+            announcementElement("announcementBody")?.value ||
+            ""
+        ).trim();
+
+        const category = (
+            announcementElement("announcementCategory")?.value ||
+            "General Update"
+        ).trim();
+
+        if (!userId) {
+            setAnnouncementStatus(
+                "Your account profile could not be verified.",
+                true
+            );
+
+            return;
+        }
+
+        if (!title || !body) {
+            setAnnouncementStatus(
+                "Enter both an announcement title and message.",
+                true
+            );
+
+            return;
+        }
+
+        if (!ANNOUNCEMENT_CATEGORIES.includes(category)) {
+            setAnnouncementStatus(
+                "Please select a valid announcement category.",
+                true
+            );
+
+            return;
+        }
+
+        const publishButton = document.querySelector(
+            '#announcementAdminForm button[onclick="publishAnnouncement()"]'
+        );
+
+        if (publishButton) {
+            publishButton.disabled = true;
+            publishButton.textContent = "Publishing...";
+        }
+
+        setAnnouncementStatus(
+            "Publishing announcement...",
+            false
+        );
+
+        try {
+            const {
+                error
+            } = await supabaseClient
+                .from("forum_posts")
+                .insert({
+                    user_id: userId,
+                    title: title,
+                    body: body,
+                    category: category,
+                    is_announcement: true
+                });
+
+            if (error) {
+                throw error;
+            }
+
+            announcementElement(
+                "announcementTitle"
+            ).value = "";
+
+            announcementElement(
+                "announcementBody"
+            ).value = "";
+
+            setAnnouncementStatus(
+                "Announcement published successfully.",
+                false
+            );
+
+            await window.loadAnnouncements();
+
+        } catch (error) {
+            console.error(
+                "Publish announcement error:",
+                error
+            );
+
+            setAnnouncementStatus(
+                "Publishing failed. Check your Admin role and Supabase permissions.",
+                true
+            );
+
+        } finally {
+            if (publishButton) {
+                publishButton.disabled = false;
+                publishButton.textContent =
+                    "Publish Announcement";
+            }
+        }
+    };
+
+    // -------------------------------------------------
+    // AUTOMATIC DASHBOARD DETECTION
+    // -------------------------------------------------
+
+    function refreshAnnouncementDashboard() {
+        const dashboard = announcementElement(
+            "dashboardScreen"
+        );
+
+        if (!dashboard) return;
+
+        const isVisible =
+            dashboard.classList.contains("active");
+
+        if (isVisible && getAnnouncementProfile()) {
+            updateAnnouncementPermissions();
+
+            window.loadAnnouncements();
+        }
+    }
+
+    function initializeAnnouncements() {
+        updateAnnouncementPermissions();
+
+        refreshAnnouncementDashboard();
+
+        const dashboard = announcementElement(
+            "dashboardScreen"
+        );
+
+        if (dashboard) {
+            const observer = new MutationObserver(
+                function () {
+                    refreshAnnouncementDashboard();
+                }
+            );
+
+            observer.observe(dashboard, {
+                attributes: true,
+                attributeFilter: ["class", "style"]
+            });
+        }
+    }
+
+    if (document.readyState === "loading") {
+        document.addEventListener(
+            "DOMContentLoaded",
+            initializeAnnouncements
+        );
+    } else {
+        initializeAnnouncements();
+    }
+// =====================================================
+// CCS VSN30 — TEMPORARY MEMBER IDENTITY DIAGNOSTIC
+// =====================================================
+
+window.ccsCheckCurrentMember = async function () {
+const { data, error } = await window.supabase.rpc(
+"ccs_check_current_member"
+);
+
+if (error) {
+    console.error("CCS identity check failed:", error);
+    alert("Identity check failed: " + error.message);
+    return;
+}
+
+console.log("CCS CURRENT MEMBER:", data);
+
+alert(JSON.stringify(data, null, 2));
+
+};
+
+// =====================================================
+// END TEMPORARY MEMBER IDENTITY DIAGNOSTIC
+// =====================================================
+})();
+// ============================================================
+// CCS VSN30 — ADMIN ROLE MANAGEMENT
+// ============================================================
+
+window.loadRoleManagement = async function () {
+    const membersList = document.getElementById("roleMembersList");
+    const requestsList = document.getElementById("promotionRequestsList");
+    const memberSelect = document.getElementById("roleTargetMember");
+    const status = document.getElementById("roleManagementStatus");
+
+    if (!membersList || !requestsList || !memberSelect) {
+        console.error("Role management HTML elements were not found.");
+        return;
+    }
+
+    if (!supabaseClient) {
+        status.textContent = "Supabase connection is not ready.";
+        return;
+    }
+
+    membersList.textContent = "Loading members...";
+    requestsList.textContent = "Loading promotion requests...";
+
+    try {
+        const { data, error } = await supabaseClient.rpc(
+            "get_admin_role_management_data"
+        );
+
+        if (error) throw error;
+
+        if (!data || data.success !== true) {
+            throw new Error("Unable to load role-management data.");
+        }
+
+        const members = Array.isArray(data.members) ? data.members : [];
+        window.ccsRoleManagementMembers = members;
+        const requests = Array.isArray(data.requests) ? data.requests : [];
+
+        // Populate the member selector.
+        memberSelect.replaceChildren();
+
+        const placeholder = document.createElement("option");
+        placeholder.value = "";
+        placeholder.textContent = "Select a member";
+        memberSelect.appendChild(placeholder);
+
+        members
+            .filter(member => member.role !== "admin")
+            .forEach(member => {
+                const option = document.createElement("option");
+                option.value = member.id;
+
+                const inactiveText = member.is_active ? "" : " (Inactive)";
+                option.textContent =
+                    `${member.full_name || "Unnamed member"} — ` +
+                    `${member.role || "member"}${inactiveText}`;
+
+                memberSelect.appendChild(option);
+            });
+        window.showSelectedMemberDetails();
+
+        // Display current roles.
+        membersList.replaceChildren();
+
+        if (members.length === 0) {
+            membersList.textContent = "No members found.";
+        } else {
+            members.forEach(member => {
+                const card = document.createElement("div");
+                card.className = "dashboard-card";
+
+                const name = document.createElement("h4");
+                name.textContent = member.full_name || "Unnamed member";
+
+                const role = document.createElement("p");
+                role.textContent =
+                    "Role: " + (member.role || "member");
+
+                const phone = document.createElement("p");
+                phone.textContent =
+                    "Phone: " + (member.phone || "Not provided");
+
+                const active = document.createElement("p");
+                active.textContent = member.is_active
+                    ? "Account: Active"
+                    : "Account: Inactive";
+
+                card.append(name, role, phone, active);
+                membersList.appendChild(card);
+            });
+        }
+
+        // Display pending promotion requests.
+        requestsList.replaceChildren();
+
+        if (requests.length === 0) {
+            requestsList.textContent = "No pending promotion requests.";
+        } else {
+            requests.forEach(request => {
+                const card = document.createElement("div");
+                card.className = "dashboard-card";
+
+                const title = document.createElement("h4");
+                title.textContent =
+                    request.full_name || "Unnamed member";
+
+                const requestedRole = document.createElement("p");
+                requestedRole.textContent =
+                    "Requested role: " + request.requested_role;
+
+                const reason = document.createElement("p");
+                reason.textContent =
+                    "Reason: " + (request.reason || "No reason provided");
+
+                const created = document.createElement("p");
+                created.textContent =
+                    "Submitted: " +
+                    (request.created_at
+                        ? new Date(request.created_at).toLocaleString()
+                        : "Date unavailable");
+
+                const noteLabel = document.createElement("label");
+                noteLabel.textContent = "Admin review note";
+
+                const note = document.createElement("textarea");
+                note.placeholder = "Optional reason or feedback";
+                note.maxLength = 1000;
+
+                const approve = document.createElement("button");
+                approve.type = "button";
+                approve.textContent = "Approve";
+                approve.addEventListener("click", () => {
+                    window.reviewRolePromotion(
+                        request.id,
+                        "approved",
+                        note.value
+                    );
+                });
+
+                const reject = document.createElement("button");
+                reject.type = "button";
+                reject.textContent = "Reject";
+                reject.className = "secondary";
+                reject.addEventListener("click", () => {
+                    window.reviewRolePromotion(
+                        request.id,
+                        "rejected",
+                        note.value
+                    );
+                });
+
+                card.append(
+                    title,
+                    requestedRole,
+                    reason,
+                    created,
+                    noteLabel,
+                    note,
+                    approve,
+                    reject
+                );
+
+                requestsList.appendChild(card);
+            });
+        }
+
+        if (status) {
+            status.textContent = "Role management loaded successfully.";
+        }
+    } catch (error) {
+        console.error("Role management error:", error);
+
+        membersList.textContent = "Could not load member roles.";
+        requestsList.textContent = "Could not load promotion requests.";
+
+        if (status) {
+            status.textContent =
+                error.message || "Failed to load role management.";
+        }
+    }
+};
+
+
+// ============================================================
+// ASSIGN A MEMBER'S ROLE
+// ============================================================
+
+window.assignSelectedMemberRole = async function () {
+    const memberSelect = document.getElementById("roleTargetMember");
+    const roleSelect = document.getElementById("roleTargetValue");
+    const status = document.getElementById("roleAssignmentStatus");
+
+    const userId = memberSelect?.value;
+    const newRole = roleSelect?.value;
+
+    const allowedRoles = [
+        "member",
+        "treasurer",
+        "secretary",
+        "committee"
+    ];
+
+    if (!userId) {
+        status.textContent = "Please select a member.";
+        return;
+    }
+
+    if (!allowedRoles.includes(newRole)) {
+        status.textContent = "Please select a valid role.";
+        return;
+    }
+
+    if (!window.confirm(
+        `Assign the role "${newRole}" to the selected member?`
+    )) {
+        return;
+    }
+
+    status.textContent = "Updating member role...";
+
+    try {
+        const { data, error } = await supabaseClient.rpc(
+            "admin_assign_member_role",
+            {
+                p_user_id: userId,
+                p_new_role: newRole
+            }
+        );
+
+        if (error) throw error;
+
+        if (data && data.success === false) {
+            throw new Error(data.message || "Role assignment failed.");
+        }
+
+        status.textContent = "Member role updated successfully.";
+
+        await window.loadRoleManagement();
+    } catch (error) {
+        console.error("Role assignment error:", error);
+
+        status.textContent =
+            error.message || "Could not update the member role.";
+    }
+};
+
+
+// ============================================================
+// APPROVE OR REJECT PROMOTION REQUESTS
+// ============================================================
+
+window.reviewRolePromotion = async function (
+    requestId,
+    decision,
+    reviewNote
+) {
+    if (!["approved", "rejected"].includes(decision)) {
+        alert("Invalid review decision.");
+        return;
+    }
+
+    const action = decision === "approved" ? "approve" : "reject";
+
+    if (!window.confirm(`Are you sure you want to ${action} this request?`)) {
+        return;
+    }
+
+    const status = document.getElementById("roleManagementStatus");
+
+    if (status) {
+        status.textContent = `Processing ${action}...`;
+    }
+
+    try {
+        const { data, error } = await supabaseClient.rpc(
+            "review_promotion_request",
+            {
+                p_request_id: requestId,
+                p_decision: decision,
+                p_review_note: (reviewNote || "").trim() || null
+            }
+        );
+
+        if (error) throw error;
+
+        if (data && data.success === false) {
+            throw new Error(data.message || "Request review failed.");
+        }
+
+        if (status) {
+            status.textContent =
+                `Promotion request ${decision} successfully.`;
+        }
+
+        await window.loadRoleManagement();
+    } catch (error) {
+        console.error("Promotion review error:", error);
+
+        if (status) {
+            status.textContent =
+                error.message || "Could not review the promotion request.";
+        }
+    }
+};
+
+console.log("CCS VSN30 Admin Role Management loaded.");
+// ============================================================
+// CCS VSN30 — SELECTED MEMBER DETAILS
+// ============================================================
+
+window.showSelectedMemberDetails = function () {
+    const selector = document.getElementById("roleTargetMember");
+    const details = document.getElementById("selectedMemberDetails");
+
+    if (!selector || !details) return;
+
+    const selectedId = selector.value;
+
+    if (!selectedId) {
+        details.replaceChildren();
+
+        const message = document.createElement("p");
+        message.textContent =
+            "Select a member to view their details before assigning a role.";
+
+        details.appendChild(message);
+        return;
+    }
+
+    const member = window.ccsRoleManagementMembers?.find(
+        item => String(item.id) === String(selectedId)
+    );
+
+    if (!member) {
+        details.textContent =
+            "Member details are unavailable. Refresh role management.";
+        return;
+    }
+
+    details.replaceChildren();
+
+    const heading = document.createElement("h4");
+    heading.textContent = "Member Information";
+    details.appendChild(heading);
+
+    const fields = [
+        ["Full Name", member.full_name],
+        ["Phone Number", member.phone],
+        ["Current Role", member.role],
+        ["Account Status", member.is_active ? "Active" : "Inactive"],
+        ["Member ID", member.id]
+    ];
+
+    fields.forEach(([label, value]) => {
+        const paragraph = document.createElement("p");
+        const strong = document.createElement("strong");
+
+        strong.textContent = label + ": ";
+        paragraph.appendChild(strong);
+        paragraph.appendChild(
+            document.createTextNode(
+                value === null || value === undefined || value === ""
+                    ? "Not available"
+                    : String(value)
+            )
+        );
+
+        details.appendChild(paragraph);
+    });
+
+    const warning = document.createElement("p");
+    warning.textContent =
+        "Confirm that these details identify the correct member before assigning a role.";
+
+    details.appendChild(warning);
+};
+// =========================================================
+// CCS VSN30 — PENDING REGISTRATION APPROVALS
+// =========================================================
+window.loadPendingRegistrations = async function () {
+
+    const list = document.getElementById(
+        "pendingRegistrationsList"
+    );
+
+    const count = document.getElementById(
+        "pendingRegistrationCount"
+    );
+
+    const status = document.getElementById(
+        "registrationApprovalStatus"
+    );
+
+    if (!list || !count || !status) {
+        console.error(
+            "Registration approval HTML elements are missing."
+        );
+        return;
+    }
+
+    if (!supabaseClient || !currentProfile) {
+        status.textContent =
+            "Please log in before loading applications.";
+        return;
+    }
+
+    if (
+        String(currentProfile.role || "").toLowerCase() !== "admin" ||
+        currentProfile.is_active !== true
+    ) {
+        status.textContent =
+            "Only the active Admin can review applications.";
+        return;
+    }
+
+    list.innerHTML = "<p>Loading applications...</p>";
+    status.textContent = "";
+
+    try {
+
+        const { data, error } = await supabaseClient
+            .from("registration_applications")
+            .select(
+                "id, full_name, phone, email, registration_amount, payment_method, transaction_reference, screenshot_path, status, rejection_reason, created_at"
+            )
+            .eq("status", "pending")
+            .order("created_at", { ascending: false });
+
+        if (error) {
+            throw error;
+        }
+
+        const applications = data || [];
+
+        count.textContent = String(applications.length);
+
+        if (applications.length === 0) {
+
+            list.innerHTML = `
+                <div class="dashboard-card">
+                    <h4>No Pending Applications</h4>
+                    <p>
+                        There are currently no registration
+                        applications waiting for review.
+                    </p>
+                </div>
+            `;
+
+            return;
+        }
+
+        const safe = function (value) {
+            return String(value ?? "")
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        };
+
+        list.innerHTML = applications.map(function (app) {
+
+            const method =
+                app.payment_method === "manual_paybill"
+                    ? "Manual M-PESA PayBill"
+                    : app.payment_method === "mpesa_stk"
+                    ? "M-PESA STK Push"
+                    : app.payment_method || "Not specified";
+
+            const submittedAt = app.created_at
+                ? new Date(app.created_at).toLocaleString()
+                : "Not available";
+
+            /*
+             * Show the screenshot button only when
+             * a screenshot path has been saved.
+             */
+
+            const screenshotSection = app.screenshot_path
+                ? `
+                    <div class="registration-screenshot-section">
+
+                        <p style="color:#10b981;">
+                            <strong>Payment Screenshot:</strong>
+                            Uploaded
+                        </p>
+
+                        <button
+                            type="button"
+                            class="registration-screenshot-button"
+                            data-screenshot-path="${safe(app.screenshot_path)}"
+                        >
+                            View Payment Screenshot
+                        </button>
+
+                    </div>
+                `
+                : `
+                    <div class="registration-screenshot-section">
+                        <p style="color:#f59e0b;">
+                            <strong>Payment Screenshot:</strong>
+                            Not provided
+                        </p>
+                    </div>
+                `;
+
+            return `
+                <div class="dashboard-card registration-application-card">
+
+                    <h4>${safe(app.full_name)}</h4>
+
+                    <p>
+                        <strong>Application ID:</strong><br>
+                        ${safe(app.id)}
+                    </p>
+
+                    <p>
+                        <strong>Phone:</strong>
+                        ${safe(app.phone)}
+                    </p>
+
+                    <p>
+                        <strong>Email:</strong>
+                        ${safe(app.email)}
+                    </p>
+
+                    <p>
+                        <strong>Registration Fee:</strong>
+                        KSh ${Number(
+                            app.registration_amount || 0
+                        ).toLocaleString()}
+                    </p>
+
+                    <p>
+                        <strong>Payment Method:</strong>
+                        ${safe(method)}
+                    </p>
+
+                    <p>
+                        <strong>Transaction Reference:</strong>
+                        ${safe(
+                            app.transaction_reference ||
+                            "Not supplied"
+                        )}
+                    </p>
+
+                    ${screenshotSection}
+
+                    <p>
+                        <strong>Submitted:</strong>
+                        ${safe(submittedAt)}
+                    </p>
+
+                    <p style="color:#f59e0b;">
+                        <strong>Status:</strong>
+                        PENDING — PAYMENT NOT YET VERIFIED
+                    </p>
+
+                    <p>
+                        Verify the KSh 100 payment using
+                        your authorized payment records before
+                        approving this application.
+                    </p>
+
+                    <label for="rejectReason_${safe(app.id)}">
+                        Reason for Rejection
+                    </label>
+
+                    <textarea
+                        id="rejectReason_${safe(app.id)}"
+                        rows="3"
+                        maxlength="1000"
+                        placeholder="Enter the reason if rejecting"
+                    ></textarea>
+
+                    <button
+                        type="button"
+                        class="registration-approve-button"
+                        data-application-id="${safe(app.id)}"
+                        data-decision="approved"
+                    >
+                        Approve Verified Application
+                    </button>
+
+                    <button
+                        type="button"
+                        class="secondary registration-reject-button"
+                        data-application-id="${safe(app.id)}"
+                        data-decision="rejected"
+                    >
+                        Reject Application
+                    </button>
+
+                </div>
+            `;
+
+        }).join("");
+
+        /*
+         * Attach click handlers after rendering.
+         * This avoids placing application data directly
+         * inside inline JavaScript event handlers.
+         */
+
+        list.querySelectorAll(
+            ".registration-screenshot-button"
+        ).forEach(function (button) {
+
+            button.addEventListener("click", function () {
+
+                const screenshotPath =
+                    button.getAttribute("data-screenshot-path");
+
+                if (
+                    typeof window.viewRegistrationScreenshot !==
+                    "function"
+                ) {
+                    alert(
+                        "The screenshot viewer is not installed yet."
+                    );
+                    return;
+                }
+
+                window.viewRegistrationScreenshot(
+                    screenshotPath
+                );
+            });
+
+        });
+
+        list.querySelectorAll(
+            ".registration-approve-button"
+        ).forEach(function (button) {
+
+            button.addEventListener("click", function () {
+
+                window.reviewRegistrationApplication(
+                    button.getAttribute("data-application-id"),
+                    "approved"
+                );
+
+            });
+
+        });
+
+        list.querySelectorAll(
+            ".registration-reject-button"
+        ).forEach(function (button) {
+
+            button.addEventListener("click", function () {
+
+                window.reviewRegistrationApplication(
+                    button.getAttribute("data-application-id"),
+                    "rejected"
+                );
+
+            });
+
+        });
+
+    } catch (error) {
+
+        console.error(
+            "Could not load registration applications:",
+            error
+        );
+
+        list.innerHTML = `
+            <p>
+                Applications could not be loaded.
+                Check the Admin permissions and database policies.
+            </p>
+        `;
+
+        status.textContent =
+            error.message || "Failed to load applications.";
+    }
+
+};
+// =========================================================
+// REVIEW A REGISTRATION APPLICATION
+// =========================================================
+
+window.reviewRegistrationApplication = async function (
+applicationId,
+decision
+) {
+
+const status = document.getElementById(
+    "registrationApprovalStatus"
+);
+
+if (!supabaseClient || !currentProfile) {
+    if (status) {
+        status.textContent =
+            "Please log in before reviewing applications.";
+    }
+    return;
+}
+
+if (
+    String(currentProfile.role || "").toLowerCase() !==
+        "admin" ||
+    currentProfile.is_active !== true
+) {
+    if (status) {
+        status.textContent =
+            "Only the active Admin can review applications.";
+    }
+    return;
+}
+
+if (!["approved", "rejected"].includes(decision)) {
+    if (status) {
+        status.textContent = "Invalid review decision.";
+    }
+    return;
+}
+
+let rejectionReason = null;
+
+if (decision === "rejected") {
+
+    const reasonField = document.getElementById(
+        "rejectReason_" + applicationId
+    );
+
+    rejectionReason = reasonField
+        ? reasonField.value.trim()
+        : "";
+
+    if (!rejectionReason) {
+        if (status) {
+            status.textContent =
+                "Enter a reason before rejecting the application.";
+        }
+        return;
+    }
+}
+
+const confirmation = decision === "approved"
+    ? "Confirm that you have independently verified the KSh 100 payment. Approve this application and activate the member?"
+    : "Reject this registration application? The applicant's account will remain inactive.";
+
+if (!window.confirm(confirmation)) {
+    return;
+}
+
+try {
+
+    if (status) {
+        status.textContent = "Processing decision...";
+    }
+
+    const { error } = await supabaseClient.rpc(
+        "admin_review_registration",
+        {
+            p_application_id: applicationId,
+            p_decision: decision,
+            p_rejection_reason: rejectionReason
+        }
+    );
+
+    if (error) {
+        throw error;
+    }
+
+    if (status) {
+        status.textContent = decision === "approved"
+            ? "Application approved. The member has been activated."
+            : "Application rejected. The account remains inactive.";
+    }
+
+    await window.loadPendingRegistrations();
+
+} catch (error) {
+
+    console.error(
+        "Registration review failed:",
+        error
+    );
+
+    if (status) {
+        status.textContent =
+            error.message ||
+            "The decision could not be completed.";
+    }
+}
+
+};
+
+// =========================================================
+// END REGISTRATION APPROVALS
+// =========================================================
+
+// =========================================================
+// CCS VSN30 — REGISTRATION PAYMENT SCREENSHOT VIEWER
+// Displays private payment evidence inside the dashboard.
+// =========================================================
+
+window.viewRegistrationScreenshot = async function (screenshotPath) {
+    const storageBucket = "registration-payment-evidence";
+
+    if (!screenshotPath) {
+        alert("No payment screenshot path was saved for this application.");
+        return;
+    }
+
+    // Use the existing CCS VSN30 Supabase client.
+const client = supabaseClient;
+
+if (
+    !client ||
+    !client.storage ||
+    typeof client.storage.from !== "function"
+) {
+    console.error(
+        "CCS VSN30 Supabase client is not initialized."
+    );
+
+    alert(
+        "Supabase is not initialized. Please reload CCS VSN30 and try again."
+    );
+
+    return;
+}
+
+    // Use the existing admin session.
+    const {
+        data: { user },
+        error: authError
+    } = await client.auth.getUser();
+
+    if (authError || !user) {
+        alert("Your session has expired. Log in again as Admin.");
+        return;
+    }
+
+    // Verify that the current user is an active Admin.
+    const { data: profile, error: profileError } = await client
+        .from("profiles")
+        .select("role, is_active")
+        .eq("id", user.id)
+        .maybeSingle();
+
+    if (
+        profileError ||
+        !profile ||
+        String(profile.role).toLowerCase() !== "admin" ||
+        profile.is_active !== true
+    ) {
+        alert("Only an active Admin can view registration payment screenshots.");
+        return;
+    }
+
+    // Create a private, temporary URL for the screenshot.
+    const { data, error } = await client.storage
+        .from(storageBucket)
+        .createSignedUrl(screenshotPath, 300);
+
+    if (error || !data || !data.signedUrl) {
+        console.error("Screenshot URL error:", error);
+        alert(
+            "Could not retrieve the screenshot. Check the Admin Storage SELECT policy."
+        );
+        return;
+    }
+
+    // Create the viewer modal once.
+    let modal = document.getElementById("ccsRegistrationScreenshotModal");
+
+    if (!modal) {
+        modal = document.createElement("div");
+        modal.id = "ccsRegistrationScreenshotModal";
+
+        modal.style.cssText = `
+            position: fixed;
+            inset: 0;
+            z-index: 999999;
+            background: rgba(0, 0, 0, 0.92);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+        `;
+
+        modal.innerHTML = `
+            <div style="
+                width: 100%;
+                max-width: 850px;
+                max-height: 95vh;
+                background: #111827;
+                border: 1px solid #475569;
+                border-radius: 14px;
+                padding: 12px;
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+            ">
+                <div style="
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 10px;
+                ">
+                    <strong style="color: white;">
+                        Registration Payment Screenshot
+                    </strong>
+
+                    <button
+                        type="button"
+                        id="ccsCloseRegistrationScreenshot"
+                        style="
+                            padding: 9px 14px;
+                            background: #dc2626;
+                            color: white;
+                            border: none;
+                            border-radius: 7px;
+                            font-weight: bold;
+                        "
+                    >Close ✕</button>
+                </div>
+
+                <div id="ccsRegistrationScreenshotStatus"
+                     style="color: #fbbf24; font-size: 14px;">
+                    Loading screenshot...
+                </div>
+
+                <div style="
+                    overflow: auto;
+                    min-height: 100px;
+                    text-align: center;
+                ">
+                    <img
+                        id="ccsRegistrationScreenshotImage"
+                        alt="Registration payment evidence"
+                        style="
+                            display: none;
+                            max-width: 100%;
+                            max-height: 72vh;
+                            object-fit: contain;
+                            border-radius: 8px;
+                            background: white;
+                        "
+                    >
+                </div>
+
+                <a
+                    id="ccsRegistrationScreenshotOpen"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style="
+                        display: none;
+                        color: #93c5fd;
+                        text-align: center;
+                        padding: 8px;
+                    "
+                >Open image separately</a>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+
+        document.getElementById(
+            "ccsCloseRegistrationScreenshot"
+        ).addEventListener("click", function () {
+            modal.style.display = "none";
+
+            const image = document.getElementById(
+                "ccsRegistrationScreenshotImage"
+            );
+
+            image.onload = null;
+            image.onerror = null;
+            image.removeAttribute("src");
+        });
+
+        modal.addEventListener("click", function (event) {
+            if (event.target === modal) {
+                modal.style.display = "none";
+            }
+        });
+    }
+
+    const image = document.getElementById(
+        "ccsRegistrationScreenshotImage"
+    );
+
+    const status = document.getElementById(
+        "ccsRegistrationScreenshotStatus"
+    );
+
+    const openLink = document.getElementById(
+        "ccsRegistrationScreenshotOpen"
+    );
+
+    modal.style.display = "flex";
+    image.style.display = "none";
+    image.removeAttribute("src");
+    openLink.style.display = "none";
+    status.textContent = "Loading screenshot...";
+
+    image.onload = function () {
+        image.style.display = "inline-block";
+        status.textContent = "Screenshot loaded successfully.";
+    };
+
+    image.onerror = function () {
+        image.style.display = "none";
+        status.textContent =
+            "The image could not be displayed here. Try opening it separately.";
+        openLink.style.display = "block";
+    };
+
+    openLink.href = data.signedUrl;
+
+    image.src = data.signedUrl;
+
+    openLink.style.display = "block";
+};
