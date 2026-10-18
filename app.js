@@ -168,185 +168,519 @@ function isValidEmail(email) {
 }
 
 
-// =====================================================
+
+  // =====================================================
 // SIGN UP → SUBSCRIPTION
+// Supports new users and existing confirmed accounts
 // =====================================================
 
-function goToSubscription() {
+async function goToSubscription() {
 
     const fullName =
-        document
-            .getElementById("fullName")
-            ?.value
-            .trim();
+        document.getElementById("fullName").value.trim();
 
     const phone =
-        document
-            .getElementById("phone")
-            ?.value
-            .trim();
+        document.getElementById("phone").value.trim();
 
     const email =
-        document
-            .getElementById("email")
-            ?.value
-            .trim();
+        document.getElementById("email").value.trim();
 
     const password =
-        document
-            .getElementById("password")
-            ?.value;
+        document.getElementById("password").value;
 
     const confirmPassword =
-        document
-            .getElementById("confirmPassword")
-            ?.value;
+        document.getElementById("confirmPassword").value;
 
-    const role =
-        document
-            .getElementById("role")
-            ?.value;
+    const status =
+        document.getElementById("signupStatus");
 
-    const signupStatus =
+    const button =
         document.getElementById(
-            "signupStatus"
+            "continueToSubscriptionButton"
         );
 
+    function showSignupStatus(message, isError = true) {
+
+        if (status) {
+            status.textContent = message;
+            status.style.color =
+                isError ? "#ff6b6b" : "#22c55e";
+        }
+    }
 
     if (
         !fullName ||
         !phone ||
         !email ||
         !password ||
-        !confirmPassword ||
-        !role
+        !confirmPassword
     ) {
-
-        if (signupStatus) {
-
-            signupStatus.textContent =
-                "Please fill in all fields.";
-
-        }
-
+        showSignupStatus(
+            "Please complete all required fields."
+        );
         return;
-
     }
-
 
     if (!isValidPhone(phone)) {
-
-        if (signupStatus) {
-
-            signupStatus.textContent =
-                "Enter a valid Kenyan phone number.";
-
-        }
-
+        showSignupStatus(
+            "Enter a valid Kenyan phone number."
+        );
         return;
-
     }
-
 
     if (!isValidEmail(email)) {
-
-        if (signupStatus) {
-
-            signupStatus.textContent =
-                "Enter a valid email address.";
-
-        }
-
+        showSignupStatus(
+            "Enter a valid email address."
+        );
         return;
-
     }
-
-
-    if (password.length < 6) {
-
-        if (signupStatus) {
-
-            signupStatus.textContent =
-                "Password must be at least 6 characters.";
-
-        }
-
-        return;
-
-    }
-
 
     if (password !== confirmPassword) {
+        showSignupStatus(
+            "Your passwords do not match."
+        );
+        return;
+    }
 
-        if (signupStatus) {
+    if (password.length < 6) {
+        showSignupStatus(
+            "Your password must contain at least 6 characters."
+        );
+        return;
+    }
 
-            signupStatus.textContent =
-                "Passwords do not match.";
+    if (!supabaseClient) {
+        showSignupStatus(
+            "Supabase is not connected. Refresh and try again."
+        );
+        return;
+    }
 
+    const normalizedPhone = normalizePhone(phone);
+
+    try {
+
+        if (button) {
+            button.disabled = true;
+            button.textContent = "Checking account...";
         }
 
-        return;
-
-    }
-
-
-    registrationData = {
-
-        fullName:
-            fullName,
-
-        phone:
-            normalizePhone(phone),
-
-        email:
-            email,
-
-        password:
-            password,
-
-        role:
-            role
-
-    };
-
-
-    const mpesaPhone =
-        document.getElementById(
-            "mpesaPhone"
+        showSignupStatus(
+            "Checking your registration account...",
+            false
         );
 
-    if (mpesaPhone) {
+        let authenticated = false;
+        let signupError = null;
 
-        mpesaPhone.value =
-            phone;
+        // -------------------------------------------------
+        // FIRST: Try creating a new account.
+        // -------------------------------------------------
 
-    }
+        const signupResult =
+            await supabaseClient.auth.signUp({
 
+                email: email,
 
-    const paymentStatus =
-        document.getElementById(
-            "paymentStatus"
+                password: password,
+
+                options: {
+                    data: {
+                        full_name: fullName,
+                        phone: normalizedPhone
+                    }
+                }
+
+            });
+
+        signupError = signupResult.error;
+
+        if (
+            !signupError &&
+            signupResult.data &&
+            signupResult.data.session
+        ) {
+            authenticated = true;
+        }
+
+        // -------------------------------------------------
+        // SECOND: If signup did not create a session,
+        // try signing in to the existing confirmed account.
+        // -------------------------------------------------
+
+        if (!authenticated) {
+
+            if (button) {
+                button.textContent =
+                    "Checking existing account...";
+            }
+
+            const loginResult =
+                await supabaseClient.auth.signInWithPassword({
+
+                    email: email,
+
+                    password: password
+
+                });
+
+            if (
+                !loginResult.error &&
+                loginResult.data &&
+                loginResult.data.session
+            ) {
+                authenticated = true;
+            } else {
+
+                const loginError =
+                    loginResult.error;
+
+                if (
+                    loginError &&
+                    /email not confirmed/i.test(
+                        loginError.message || ""
+                    )
+                ) {
+                    showSignupStatus(
+                        "Your email is not confirmed yet. " +
+                        "Open your latest confirmation email before continuing."
+                    );
+                    return;
+                }
+
+                if (
+                    signupError &&
+                    /rate limit|email rate limit/i.test(
+                        signupError.message || ""
+                    )
+                ) {
+                    showSignupStatus(
+                        "Supabase has temporarily limited registration emails. " +
+                        "Your existing account may still be used. " +
+                        "Please check your email and password, then try again later."
+                    );
+                    return;
+                }
+
+                showSignupStatus(
+                    "We could not sign in or create an account. " +
+                    "Check your email and password. If your account already exists, " +
+                    "use its original password."
+                );
+
+                return;
+            }
+        }
+
+        // -------------------------------------------------
+        // THIRD: Store the registration details locally.
+        // The authenticated Supabase user remains the
+        // source of identity for database submissions.
+        // -------------------------------------------------
+
+        registrationData = {
+            fullName: fullName,
+            phone: normalizedPhone,
+            email: email,
+            role: "member"
+        };
+
+        localStorage.setItem(
+            "ccsPendingRegistration",
+            JSON.stringify(registrationData)
         );
 
-    if (paymentStatus) {
+        const mpesaPhone =
+            document.getElementById("mpesaPhone");
 
-        paymentStatus.textContent =
-            "Please pay the required subscription fee before verification.";
+        const subscriptionPhone =
+            document.getElementById(
+                "subscriptionPaymentPhone"
+            );
 
+        if (mpesaPhone) {
+            mpesaPhone.value = normalizedPhone;
+        }
+
+        if (subscriptionPhone) {
+            subscriptionPhone.value = normalizedPhone;
+        }
+
+        showSignupStatus(
+            "Account verified. Continue to the KSh 100 registration payment.",
+            false
+        );
+
+        showScreen("subscriptionScreen");
+
+    } catch (error) {
+
+        console.error(
+            "CCS registration error:",
+            error
+        );
+
+        showSignupStatus(
+            error.message ||
+            "Unable to continue registration."
+        );
+
+    } finally {
+
+        if (button) {
+            button.disabled = false;
+            button.textContent =
+                "Continue to Subscription";
+        }
     }
+}   
+// ================================================
+// SUBSCRIPTION PAYMENT METHOD SELECTION
+// ================================================
 
+function selectSubscriptionMethod(method) {
+const manualPanel = document.getElementById(
+"manualSubscriptionPanel"
+);
 
-    if (signupStatus) {
-        signupStatus.textContent = "";
-    }
+const stkPanel = document.getElementById(
+    "stkSubscriptionPanel"
+);
 
+const manualButton = document.getElementById(
+    "manualPaybillOption"
+);
 
-    showScreen(
-        "subscriptionScreen"
+const stkButton = document.getElementById(
+    "stkPushOption"
+);
+
+if (!manualPanel || !stkPanel) {
+    console.error("Subscription payment panels were not found.");
+    return;
+}
+
+manualPanel.style.display =
+    method === "manual" ? "block" : "none";
+
+stkPanel.style.display =
+    method === "stk" ? "block" : "none";
+
+if (manualButton) {
+    manualButton.setAttribute(
+        "aria-pressed",
+        String(method === "manual")
     );
+}
+
+if (stkButton) {
+    stkButton.setAttribute(
+        "aria-pressed",
+        String(method === "stk")
+    );
+}
+
+const generalStatus = document.getElementById(
+    "subscriptionRegistrationStatus"
+);
+
+if (generalStatus) {
+    generalStatus.textContent = "";
+}
 
 }
 
+// ================================================
+// COPY SUBSCRIPTION PAYMENT DETAILS
+// ================================================
+
+async function copySubscriptionDetail(elementId) {
+const field = document.getElementById(elementId);
+
+if (!field) {
+    return;
+}
+
+const value = field.value;
+
+try {
+    await navigator.clipboard.writeText(value);
+    alert("Copied successfully: " + value);
+} catch (error) {
+    // Fallback for browsers where clipboard access is unavailable.
+    field.focus();
+    field.select();
+
+    const copied = document.execCommand("copy");
+
+    if (copied) {
+        alert("Copied successfully: " + value);
+    } else {
+        alert("Please copy the displayed payment detail manually.");
+    }
+}
+
+}
+// =====================================================
+// CCS VSN30 — CREATE REGISTRATION APPLICATION
+// =====================================================
+
+async function ensureRegistrationApplication(
+    paymentMethod,
+    transactionReference = null
+) {
+
+    if (!supabaseClient) {
+        throw new Error(
+            "Supabase is not connected."
+        );
+    }
+
+    const allowedMethods = [
+        "manual_paybill",
+        "mpesa_stk"
+    ];
+
+    if (!allowedMethods.includes(paymentMethod)) {
+        throw new Error(
+            "Invalid registration payment method."
+        );
+    }
+
+    // Get the authenticated Supabase user.
+    const {
+        data: userData,
+        error: userError
+    } = await supabaseClient.auth.getUser();
+
+    if (userError || !userData || !userData.user) {
+        throw new Error(
+            "Please sign in before submitting your registration."
+        );
+    }
+
+    const user = userData.user;
+
+    const savedRegistration =
+        registrationData &&
+        registrationData.fullName
+            ? registrationData
+            : JSON.parse(
+                localStorage.getItem(
+                    "ccsPendingRegistration"
+                ) || "{}"
+            );
+
+    const fullName =
+        savedRegistration.fullName ||
+        user.user_metadata?.full_name;
+
+    const phone =
+        savedRegistration.phone ||
+        user.user_metadata?.phone;
+
+    const email =
+        user.email;
+
+    if (!fullName || !phone || !email) {
+        throw new Error(
+            "Registration details are incomplete. " +
+            "Please return to registration and check your details."
+        );
+    }
+
+    // Check whether this user already has an application.
+    const {
+        data: existingApplication,
+        error: lookupError
+    } = await supabaseClient
+        .from("registration_applications")
+        .select(
+    "id, status, payment_method, screenshot_path"
+)
+.eq("user_id", user.id)
+.maybeSingle();
+
+    if (lookupError) {
+        console.error(
+            "Registration application lookup failed:",
+            lookupError
+        );
+
+        throw new Error(
+            "Could not check your existing registration application."
+        );
+    }
+
+    if (existingApplication) {
+
+        if (existingApplication.status === "pending") {
+            return {
+                application: existingApplication,
+                alreadyExists: true
+            };
+        }
+
+        if (existingApplication.status === "approved") {
+            throw new Error(
+                "Your registration application is already approved. " +
+                "Please sign in to your account."
+            );
+        }
+
+        if (existingApplication.status === "rejected") {
+            throw new Error(
+                "Your previous registration application was rejected. " +
+                "Please contact the administrator for assistance."
+            );
+        }
+
+        throw new Error(
+            "An existing registration application requires administrator review."
+        );
+    }
+
+    // Create a pending application.
+    // This does NOT verify payment or activate the account.
+    const {
+        data: newApplication,
+        error: insertError
+    } = await supabaseClient
+        .from("registration_applications")
+        .insert({
+            user_id: user.id,
+            full_name: fullName,
+            phone: normalizePhone(phone),
+            email: email,
+            registration_amount: 100,
+            payment_method: paymentMethod,
+            transaction_reference:
+                transactionReference || null,
+            status: "pending"
+        })
+        .select(
+    "id, status, payment_method, screenshot_path"
+)
+.single();
+
+    if (insertError) {
+
+        console.error(
+            "Registration application insert failed:",
+            insertError
+        );
+
+        throw new Error(
+            "The registration application could not be submitted. " +
+            "Please check your connection and try again."
+        );
+    }
+
+    return {
+        application: newApplication,
+        alreadyExists: false
+    };
+}
 
 // =====================================================
 // START M-PESA SUBSCRIPTION PAYMENT
@@ -361,74 +695,70 @@ async function startPayment() {
             .trim();
 
     const paymentStatus =
-        document.getElementById(
-            "paymentStatus"
-        );
+        document.getElementById("paymentStatus");
 
+    function showPaymentStatus(message) {
+        if (paymentStatus) {
+            paymentStatus.textContent = message;
+        }
+    }
 
     if (!isValidPhone(mpesaPhone)) {
-
-        if (paymentStatus) {
-
-            paymentStatus.textContent =
-                "Enter a valid Kenyan M-PESA phone number.";
-
-        }
-
+        showPaymentStatus(
+            "Enter a valid Kenyan M-PESA phone number."
+        );
         return;
-
     }
-
 
     if (!supabaseClient) {
-
-        if (paymentStatus) {
-
-            paymentStatus.textContent =
-                "Supabase is not connected.";
-
-        }
-
+        showPaymentStatus(
+            "Supabase is not connected."
+        );
         return;
-
     }
-
-
-    if (paymentStatus) {
-
-        paymentStatus.textContent =
-            "Sending M-PESA payment request...";
-
-    }
-
 
     try {
 
+        showPaymentStatus(
+            "Preparing your registration application..."
+        );
+
         const normalizedPhone =
-            normalizePhone(
-                mpesaPhone
+            normalizePhone(mpesaPhone);
+
+        // Create or find the registration application first.
+        const result =
+            await ensureRegistrationApplication(
+                "mpesa_stk"
             );
 
+        if (result.alreadyExists) {
+
+            showPaymentStatus(
+                "A registration application already exists with status: " +
+                result.application.status +
+                ". Check with the administrator before submitting another payment."
+            );
+
+            return;
+        }
+
+        showPaymentStatus(
+            "Application recorded. Requesting M-PESA payment..."
+        );
 
         const {
             data,
             error
-        } =
-            await supabaseClient.functions.invoke(
-                "mpesa-stk",
-                {
-                    body: {
-
-                        phone:
-                            normalizedPhone,
-
-                        amount:
-                            100
-
-                    }
+        } = await supabaseClient.functions.invoke(
+            "mpesa-stk",
+            {
+                body: {
+                    phone: normalizedPhone,
+                    amount: 100
                 }
-            );
-
+            }
+        );
 
         if (error) {
 
@@ -441,61 +771,253 @@ async function startPayment() {
                 error.message ||
                 "Failed to send M-PESA request."
             );
-
         }
-
 
         console.log(
             "STK Push response:",
             data
         );
 
+        if (data && data.success) {
 
-        if (
-            data &&
-            data.success
-        ) {
-
-            if (paymentStatus) {
-
-                paymentStatus.textContent =
-                    "STK Push sent. Check your M-PESA phone and enter your PIN.";
-
-            }
+            showPaymentStatus(
+                "M-PESA request sent. Check your phone and follow the payment instructions. " +
+                "Your account will remain inactive until payment is verified and your application is approved."
+            );
 
         } else {
 
-            if (paymentStatus) {
-
-                paymentStatus.textContent =
-                    "M-PESA request failed. Please try again.";
-
-            }
-
+            showPaymentStatus(
+                "The registration application was recorded, but the M-PESA request was not confirmed. " +
+                "Do not assume payment succeeded. Check the payment service before retrying."
+            );
         }
-
 
     } catch (error) {
 
         console.error(
-            "M-PESA error:",
+            "CCS M-PESA registration error:",
             error
         );
 
-
-        if (paymentStatus) {
-
-            paymentStatus.textContent =
-                "Unable to start M-PESA payment: " +
-                error.message;
-
-        }
-
+        showPaymentStatus(
+            error.message ||
+            "Unable to start registration payment."
+        );
     }
-
 }
 
 
+// =====================================================
+// CCS VSN30 — MANUAL REGISTRATION PAYMENT
+// =====================================================
+async function submitManualSubscriptionPayment() {
+
+const status = document.getElementById(
+    "manualSubscriptionStatus"
+);
+
+const button = document.getElementById(
+    "submitManualSubscriptionButton"
+);
+
+const phoneInput = document.getElementById(
+    "subscriptionPaymentPhone"
+);
+
+const referenceInput = document.getElementById(
+    "subscriptionTransactionReference"
+);
+
+const screenshotInput = document.getElementById(
+    "subscriptionPaymentScreenshot"
+);
+
+if (status) status.textContent = "";
+
+try {
+
+    if (!supabaseClient) {
+        throw new Error(
+            "Supabase is not connected. Refresh the app and try again."
+        );
+    }
+
+    const phone = phoneInput.value.trim();
+    const reference = referenceInput.value.trim();
+
+    if (!phone || !isValidPhone(phone)) {
+        throw new Error(
+            "Enter a valid Kenyan M-PESA phone number."
+        );
+    }
+
+    if (!reference) {
+        throw new Error(
+            "Enter the M-PESA transaction code."
+        );
+    }
+
+    const screenshot =
+        screenshotInput.files &&
+        screenshotInput.files.length > 0
+            ? screenshotInput.files[0]
+            : null;
+
+    if (screenshot) {
+
+        const allowedImageTypes = [
+    "image/jpeg",
+    "image/png"
+];
+
+if (!allowedImageTypes.includes(screenshot.type)) {
+    throw new Error(
+        "Please select a JPEG or PNG payment screenshot."
+    );
+}
+        if (screenshot.size > 5 * 1024 * 1024) {
+            throw new Error(
+                "The screenshot must be 5 MB or smaller."
+            );
+        }
+    }
+
+    if (button) button.disabled = true;
+
+    if (status) {
+        status.textContent =
+            "Submitting registration details...";
+    }
+
+   // Save or retrieve the registration application.
+const registrationResult =
+    await ensureRegistrationApplication(
+        "manual_paybill",
+        reference
+    );
+
+const application = registrationResult.application;
+
+if (!application || !application.id) {
+    throw new Error(
+        "Could not retrieve the registration application ID."
+    );
+}
+
+    let screenshotPath =
+        application.screenshot_path || null;
+
+    // Upload evidence only when a screenshot was selected
+    // and the application does not already have one.
+    if (screenshot && !screenshotPath) {
+
+        if (status) {
+            status.textContent =
+                "Uploading payment screenshot...";
+        }
+
+        const {
+            data: userData,
+            error: userError
+        } = await supabaseClient.auth.getUser();
+
+        if (userError || !userData.user) {
+            throw new Error(
+                "Your session has expired. Please log in again."
+            );
+        }
+
+        const userId = userData.user.id;
+
+        const safeReference = reference
+            .replace(/[^a-zA-Z0-9_-]/g, "")
+            .slice(0, 30);
+
+        const extension = (
+            screenshot.name.split(".").pop() || "jpg"
+        ).toLowerCase().replace(/[^a-z0-9]/g, "");
+
+        const filePath =
+            userId + "/" +
+            application.id + "/" +
+            Date.now() + "_" +
+            safeReference + "." +
+            extension;
+
+        const {
+            error: uploadError
+        } = await supabaseClient.storage
+            .from("registration-payment-evidence")
+            .upload(filePath, screenshot, {
+                cacheControl: "3600",
+                upsert: false,
+                contentType: screenshot.type
+            });
+
+        if (uploadError) {
+            throw uploadError;
+        }
+
+        screenshotPath = filePath;
+
+const {
+    data: pathSaved,
+    error: updateError
+} = await supabaseClient.rpc(
+    "set_registration_screenshot_path",
+    {
+        p_application_id: application.id,
+        p_screenshot_path: screenshotPath
+    }
+);
+
+if (updateError) {
+    throw updateError;
+}
+
+if (pathSaved !== true) {
+    throw new Error(
+        "Screenshot uploaded, but its path was not saved."
+    );
+}
+    }
+
+    if (status) {
+        status.textContent = screenshotPath
+            ? "Registration submitted successfully. Your screenshot has been uploaded. The Admin must verify your payment before approving your account."
+            : "Registration submitted successfully. No screenshot was attached. The Admin must verify your payment before approving your account.";
+    }
+
+    const generalStatus = document.getElementById(
+        "subscriptionRegistrationStatus"
+    );
+
+    if (generalStatus) {
+        generalStatus.textContent =
+            "Registration status: Pending Admin review.";
+    }
+
+} catch (error) {
+
+    console.error(
+        "Manual payment submission failed:",
+        error
+    );
+
+    if (status) {
+        status.textContent =
+            error.message ||
+            "Could not submit payment details.";
+    }
+
+} finally {
+
+    if (button) button.disabled = false;
+
+}
+
+}
 // =====================================================
 // VERIFY OTP
 // =====================================================
@@ -819,7 +1341,19 @@ async function loginUser() {
 
         currentProfile =
             profile;
+  // CCS VSN30 — SHOW TREASURER ACCESS FOR AUTHORIZED USERS
 
+const treasurerCard = document.getElementById("treasurerCard");
+
+if (treasurerCard && currentProfile) {
+    const role = String(currentProfile.role || "").toLowerCase();
+
+    treasurerCard.style.display =
+        currentProfile.is_active === true &&
+        ["admin","treasurer"].includes(role)
+            ? "block"
+            : "none";
+}
 
         // =================================================
         // DISPLAY NAME
@@ -1192,327 +1726,516 @@ async function loadDashboardData() {
 }
 
 
+
 // =====================================================
 // CREATE WITHDRAWAL
-// SECRETARY ONLY
+// SECRETARY ONLY — IMPROVED FORM SUBMISSION
 // =====================================================
 
 async function createWithdrawal() {
 
-    const withdrawalStatus =
-        document.getElementById(
-            "withdrawalStatus"
+    const amountInput =
+        document.getElementById("withdrawalAmount");
+
+    const reasonInput =
+        document.getElementById("withdrawalReason");
+
+    const destinationInput =
+        document.getElementById("withdrawalDestination");
+
+    const statusBox =
+        document.getElementById("withdrawalStatus");
+
+    const submitButton =
+        document.querySelector(
+            '#withdrawalPanel button[onclick="createWithdrawal()"]'
         );
 
-
-    if (!supabaseClient) {
-
-        if (withdrawalStatus) {
-
-            withdrawalStatus.textContent =
-                "Supabase is not connected.";
-
+    function showStatus(message, success = false) {
+        if (statusBox) {
+            statusBox.textContent = message;
+            statusBox.style.color = success
+                ? "#22c55e"
+                : "#ff6b6b";
         }
-
-        return;
-
     }
 
+    // -------------------------------------------------
+    // CHECK FORM ELEMENTS
+    // -------------------------------------------------
+
+    if (
+        !amountInput ||
+        !reasonInput ||
+        !destinationInput ||
+        !statusBox
+    ) {
+        console.error(
+            "Withdrawal form elements are missing."
+        );
+
+        return;
+    }
+
+    // -------------------------------------------------
+    // PREVENT DOUBLE SUBMISSION
+    // -------------------------------------------------
+
+    if (submitButton && submitButton.disabled) {
+        return;
+    }
+
+    if (!supabaseClient) {
+        showStatus(
+            "Supabase is not connected. Refresh and try again."
+        );
+        return;
+    }
+
+    // -------------------------------------------------
+    // VALIDATE AMOUNT, REASON AND DESTINATION
+    // -------------------------------------------------
+
+    const amountText = amountInput.value.trim();
+    const amount = Number(amountText);
+    const reason = reasonInput.value.trim();
+    const destination = destinationInput.value.trim();
+
+    if (
+        amountText === "" ||
+        !Number.isFinite(amount) ||
+        amount <= 0
+    ) {
+        showStatus(
+            "Enter a valid withdrawal amount greater than zero."
+        );
+
+        amountInput.focus();
+        return;
+    }
+
+    if (!reason) {
+        showStatus(
+            "Enter the reason for withdrawal."
+        );
+
+        reasonInput.focus();
+        return;
+    }
+
+    if (!destination) {
+        showStatus(
+            "Enter the withdrawal destination."
+        );
+
+        destinationInput.focus();
+        return;
+    }
+
+    // -------------------------------------------------
+    // SUBMIT REQUEST
+    // -------------------------------------------------
+
+    if (submitButton) {
+        submitButton.disabled = true;
+        submitButton.textContent = "Submitting...";
+    }
 
     try {
 
-        // =================================================
-        // CURRENT SESSION
-        // =================================================
+        showStatus(
+            "Checking your account..."
+        );
 
+        // Verify the current authenticated user.
         const {
             data: sessionData,
             error: sessionError
-        } =
-            await supabaseClient.auth
-                .getSession();
-
+        } = await supabaseClient.auth.getSession();
 
         if (
             sessionError ||
+            !sessionData ||
             !sessionData.session
         ) {
-
-            if (withdrawalStatus) {
-
-                withdrawalStatus.textContent =
-                    "Please login first.";
-
-            }
-
-            return;
-
+            throw new Error(
+                "Your session has expired. Please log in again."
+            );
         }
 
+        const user = sessionData.session.user;
 
-        const user =
-            sessionData.session.user;
-
-
-        // =================================================
-        // PROFILE
-        // =================================================
-
+        // Load the current user's profile.
         const {
             data: profile,
             error: profileError
-        } =
-            await supabaseClient
-                .from("profiles")
-                .select("*")
-                .eq(
-                    "id",
-                    user.id
-                )
-                .single();
+        } = await supabaseClient
+            .from("profiles")
+            .select("id, role, is_active")
+            .eq("id", user.id)
+            .single();
 
-
-        if (profileError) {
-
+        if (profileError || !profile) {
             console.error(
+                "Withdrawal profile error:",
                 profileError
             );
 
-            if (withdrawalStatus) {
-
-                withdrawalStatus.textContent =
-                    "Could not load your profile.";
-
-            }
-
-            return;
-
-        }
-
-
-        const userRole =
-            String(
-                profile.role || ""
-            )
-                .trim()
-                .toLowerCase();
-
-
-        // =================================================
-        // SECRETARY ONLY
-        // =================================================
-
-        if (
-            userRole !==
-            "secretary"
-        ) {
-
-            if (withdrawalStatus) {
-
-                withdrawalStatus.textContent =
-                    "Only the Secretary can create a withdrawal request.";
-
-            }
-
-            return;
-
-        }
-
-
-        if (
-            profile.is_active ===
-            false
-        ) {
-
-            if (withdrawalStatus) {
-
-                withdrawalStatus.textContent =
-                    "Your account is inactive.";
-
-            }
-
-            return;
-
-        }
-
-
-        // =================================================
-        // FORM VALUES
-        // =================================================
-
-        const amount =
-            document
-                .getElementById(
-                    "withdrawalAmount"
-                )
-                ?.value;
-
-
-        const reason =
-            document
-                .getElementById(
-                    "withdrawalReason"
-                )
-                ?.value
-                .trim();
-
-
-        const destination =
-            document
-                .getElementById(
-                    "withdrawalDestination"
-                )
-                ?.value
-                .trim();
-
-
-        if (
-            !amount ||
-            Number(amount) <= 0
-        ) {
-
-            if (withdrawalStatus) {
-
-                withdrawalStatus.textContent =
-                    "Enter a valid withdrawal amount.";
-
-            }
-
-            return;
-
-        }
-
-
-        if (!reason) {
-
-            if (withdrawalStatus) {
-
-                withdrawalStatus.textContent =
-                    "Enter the reason for withdrawal.";
-
-            }
-
-            return;
-
-        }
-
-
-        if (!destination) {
-
-            if (withdrawalStatus) {
-
-                withdrawalStatus.textContent =
-                    "Enter the withdrawal destination.";
-
-            }
-
-            return;
-
-        }
-
-
-        // =================================================
-        // INSERT WITHDRAWAL
-        // =================================================
-
-        const {
-            data,
-            error
-        } =
-            await supabaseClient
-                .from("withdrawals")
-                .insert([
-                    {
-
-                        requested_by:
-                            user.id,
-
-                        amount:
-                            Number(amount),
-
-                        reason:
-                            reason,
-
-                        destination:
-                            destination,
-
-                        status:
-                            "pending"
-
-                    }
-                ])
-                .select()
-                .single();
-
-
-        if (error) {
-
-            console.error(
-                "Withdrawal insert error:",
-                error
+            throw new Error(
+                "Could not verify your profile. Please try again."
             );
-
-            if (withdrawalStatus) {
-
-                withdrawalStatus.textContent =
-                    "Withdrawal request failed: " +
-                    error.message;
-
-            }
-
-            return;
-
         }
 
+        const userRole = String(
+            profile.role || ""
+        ).trim().toLowerCase();
 
-        console.log(
-            "Withdrawal created:",
-            data
+        // Only the Secretary may create withdrawal requests.
+        if (userRole !== "secretary") {
+            throw new Error(
+                "Only the Secretary can create a withdrawal request."
+            );
+        }
+
+        if (profile.is_active !== true) {
+            throw new Error(
+                "Your account is inactive. Contact the Admin."
+            );
+        }
+
+        showStatus(
+            "Submitting your withdrawal request..."
         );
 
+        // Insert the request into the existing table.
+        const {
+            data: withdrawal,
+            error: insertError
+        } = await supabaseClient
+            .from("withdrawals")
+            .insert({
+                requested_by: user.id,
+                amount: amount,
+                reason: reason,
+                destination: destination,
+                status: "pending"
+            })
+            .select(
+                "id, amount, reason, destination, status, created_at"
+            )
+            .single();
 
-        if (withdrawalStatus) {
+        if (insertError) {
+            console.error(
+                "Withdrawal submission error:",
+                insertError
+            );
 
-            withdrawalStatus.textContent =
-                "Withdrawal request submitted successfully.";
-
+            throw new Error(
+                "Request submission failed: " +
+                insertError.message
+            );
         }
 
+        if (!withdrawal) {
+            throw new Error(
+                "The database did not return the submitted request."
+            );
+        }
 
-        document.getElementById(
-            "withdrawalAmount"
-        ).value = "";
+        // Clear the form only after confirmed insertion.
+        amountInput.value = "";
+        reasonInput.value = "";
+        destinationInput.value = "";
 
-        document.getElementById(
-            "withdrawalReason"
-        ).value = "";
+        showStatus(
+            "Withdrawal request #" +
+            withdrawal.id +
+            " submitted successfully. Status: Pending approval.",
+            true
+        );
 
-        document.getElementById(
-            "withdrawalDestination"
-        ).value = "";
+        console.log(
+            "Withdrawal request created:",
+            withdrawal
+        );
 
-
-        await loadWithdrawalVoting();
-
+        // Refresh the voting list without treating a
+        // refresh failure as a failed database submission.
+        try {
+            await loadWithdrawalVoting();
+        } catch (refreshError) {
+            console.error(
+                "Withdrawal voting refresh error:",
+                refreshError
+            );
+        }
 
     } catch (error) {
 
         console.error(
+            "Create withdrawal error:",
             error
         );
 
-        if (withdrawalStatus) {
+        showStatus(
+            error.message ||
+            "An unexpected error occurred while submitting the request."
+        );
 
-            withdrawalStatus.textContent =
-                "An unexpected error occurred.";
+    } finally {
 
+        if (submitButton) {
+            submitButton.disabled = false;
+            submitButton.textContent =
+                "Submit Withdrawal Request";
         }
-
     }
-
 }
 
 
+// =====================================================
+// CCS VSN30 — LOAD TREASURER WITHDRAWAL REQUESTS
+// =====================================================
+
+window.loadTreasurerWithdrawals = async function () {
+
+const statusBox = document.getElementById(
+    "treasurerWithdrawalStatus"
+);
+
+const listBox = document.getElementById(
+    "treasurerPendingWithdrawalsList"
+);
+
+const countBox = document.getElementById(
+    "treasurerPendingWithdrawalsCount"
+);
+
+if (!statusBox || !listBox) {
+    console.error(
+        "Treasurer withdrawal HTML elements are missing."
+    );
+    return;
+}
+
+statusBox.textContent = "Loading withdrawal requests...";
+listBox.innerHTML = "";
+
+try {
+
+    const {
+        data: { user },
+        error: authError
+    } = await supabaseClient.auth.getUser();
+
+    if (authError || !user) {
+        throw new Error("Please log in again.");
+    }
+
+    const {
+        data: profile,
+        error: profileError
+    } = await supabaseClient
+        .from("profiles")
+        .select("role, is_active")
+        .eq("id", user.id)
+        .single();
+
+    if (profileError) throw profileError;
+
+    const role = String(profile.role || "")
+        .trim()
+        .toLowerCase();
+
+    if (
+        profile.is_active !== true ||
+        !["admin", "treasurer"].includes(role)
+    ) {
+        throw new Error(
+            "Only an active Treasurer or Admin can view these requests."
+        );
+    }
+
+    const {
+        data: withdrawals,
+        error: withdrawalError
+    } = await supabaseClient
+        .from("withdrawals")
+        .select(
+            "id, requested_by, amount, reason, destination, status, created_at"
+        )
+        .eq("status", "pending")
+        .order("created_at", { ascending: true });
+
+    if (withdrawalError) throw withdrawalError;
+
+    const requests = withdrawals || [];
+
+    if (countBox) {
+        countBox.textContent = String(requests.length);
+    }
+
+    if (requests.length === 0) {
+        statusBox.textContent =
+            "No pending withdrawal requests were found.";
+
+        listBox.innerHTML =
+            "<p>There are currently no pending withdrawals.</p>";
+
+        return;
+    }
+
+    const requesterIds = [
+        ...new Set(
+            requests.map(item => item.requested_by)
+        )
+    ];
+
+    const {
+        data: profiles,
+        error: requesterError
+    } = await supabaseClient
+        .from("profiles")
+        .select("id, full_name, phone")
+        .in("id", requesterIds);
+
+    if (requesterError) throw requesterError;
+
+    const profileMap = {};
+
+    (profiles || []).forEach(person => {
+        profileMap[String(person.id)] = person;
+    });
+
+    const withdrawalIds = requests.map(item => item.id);
+
+    const {
+        data: summaries,
+        error: summaryError
+    } = await supabaseClient
+        .from("withdrawal_vote_summary")
+        .select(
+            "withdrawal_id, active_members, approvals, rejections, total_votes"
+        )
+        .in("withdrawal_id", withdrawalIds);
+
+    if (summaryError) throw summaryError;
+
+    const summaryMap = {};
+
+    (summaries || []).forEach(item => {
+        summaryMap[String(item.withdrawal_id)] = item;
+    });
+
+    const escapeHTML = value =>
+        String(value ?? "").replace(/[&<>"']/g, character => ({
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#39;"
+        })[character]);
+
+    listBox.innerHTML = requests.map(request => {
+
+        const requester =
+            profileMap[String(request.requested_by)] || {};
+
+        const summary =
+            summaryMap[String(request.id)] || {};
+
+        const approvals = Number(summary.approvals || 0);
+        const rejections = Number(summary.rejections || 0);
+        const activeMembers = Number(summary.active_members || 0);
+
+        const requiredApprovals = activeMembers > 0
+            ? Math.ceil(activeMembers / 2)
+            : null;
+
+        const dateText = request.created_at
+            ? new Date(request.created_at).toLocaleString()
+            : "Not available";
+
+        return `
+            <div class="dashboard-card" style="margin-top:15px;">
+
+                <h3>Withdrawal #${escapeHTML(request.id)}</h3>
+
+                <p>
+                    <strong>Requested by:</strong>
+                    ${escapeHTML(requester.full_name || "Unknown member")}
+                </p>
+
+                <p>
+                    <strong>Phone:</strong>
+                    ${escapeHTML(requester.phone || "Not available")}
+                </p>
+
+                <p>
+                    <strong>Amount:</strong>
+                    KSh ${Number(request.amount || 0).toLocaleString()}
+                </p>
+
+                <p>
+                    <strong>Reason:</strong>
+                    ${escapeHTML(request.reason || "Not provided")}
+                </p>
+
+                <p>
+                    <strong>Destination:</strong>
+                    ${escapeHTML(request.destination || "Not provided")}
+                </p>
+
+                <p>
+                    <strong>Date requested:</strong>
+                    ${escapeHTML(dateText)}
+                </p>
+
+                <hr>
+
+                <h4>Member Voting Progress</h4>
+
+                <p>Active members: ${activeMembers}</p>
+                <p>Approvals: ${approvals}</p>
+                <p>Rejections: ${rejections}</p>
+
+                <p>
+                    Required approvals:
+                    ${requiredApprovals === null
+                        ? "Unable to determine"
+                        : requiredApprovals}
+                </p>
+
+                <p>
+                    <strong>Status:</strong>
+                    ${escapeHTML(request.status)}
+                </p>
+
+            </div>
+        `;
+
+    }).join("");
+
+    statusBox.textContent =
+        `Loaded ${requests.length} pending withdrawal request(s).`;
+
+} catch (error) {
+
+    console.error(
+        "Treasurer withdrawal loading error:",
+        error
+    );
+
+    statusBox.textContent =
+        error.message ||
+        "Could not load withdrawal requests.";
+
+    listBox.innerHTML =
+        "<p>Unable to load requests. Check database permissions and the browser console.</p>";
+}
+
+};
 // =====================================================
 // FORGOT PASSWORD
 // =====================================================
@@ -2790,7 +3513,91 @@ async function openAdminPanel() {
 
 }
 
+// ============================================
+// CCS VSN30 — SAVE DAILY CONTRIBUTION SCHEDULE
+// ============================================
 
+async function saveDailyContributionSchedule() {
+    const status = document.getElementById(
+        "dailyContributionScheduleStatus"
+    );
+
+    if (!supabaseClient || !currentProfile) {
+        status.textContent =
+            "Please log in before managing the schedule.";
+        return;
+    }
+
+    if (
+        String(currentProfile.role || "").toLowerCase()
+        !== "admin"
+    ) {
+        status.textContent =
+            "Only the Admin can activate this schedule.";
+        return;
+    }
+
+    const confirmed = window.confirm(
+        "Activate a daily contribution of KSh 50 per member, " +
+        "with a 3-day grace period and the existing penalty policy?"
+    );
+
+    if (!confirmed) {
+        return;
+    }
+
+    status.textContent = "Saving daily contribution schedule...";
+
+    try {
+        const { data, error } = await supabaseClient.rpc(
+            "admin_save_contribution_schedule",
+            {
+                p_schedule_type: "daily",
+                p_required_amount: 50,
+                p_is_enabled: true,
+                p_effective_from:
+                    new Date().toLocaleDateString("en-CA"),
+                p_due_day: null,
+                p_grace_period_days: 3,
+                p_penalty_enabled: true
+            }
+        );
+
+        if (error) {
+            console.error(
+                "Daily schedule error:",
+                error
+            );
+
+            status.textContent =
+                "Could not save the schedule: " + error.message;
+
+            return;
+        }
+
+        if (!data || data.success !== true) {
+            status.textContent =
+                data?.message ||
+                "The schedule could not be activated.";
+
+            return;
+        }
+
+        status.textContent =
+            "Success! Daily contributions are set to KSh 50. " +
+            "Schedule ID: " + data.schedule_id;
+
+        alert(
+            "Daily contribution schedule saved successfully."
+        );
+
+    } catch (error) {
+        console.error(error);
+
+        status.textContent =
+            "An unexpected error occurred while saving the schedule.";
+    }
+}
 // =====================================================
 // CLOSE ADMIN PANEL
 // =====================================================
@@ -3577,53 +4384,1276 @@ async function loadAdminVoting() {
 }
 
 
-// =====================================================
-// SELECT CONTRIBUTION PAYMENT METHOD
-// =====================================================
 
-function selectContributionMethod(
-    method
-) {
+// ==================================================
+// CCS VSN30 — CONTRIBUTION PAYMENT METHOD SELECTOR
+// ==================================================
 
-    selectedContributionMethod =
-        method;
+function selectContributionMethod(method) {
 
+    // Save the selected payment method.
+    selectedContributionMethod = method;
 
-    const status =
-        document.getElementById(
-            "contributionStatus"
+    const status = document.getElementById(
+        "contributionStatus"
+    );
+
+    const stkSection = document.getElementById(
+        "stkPaymentSection"
+    );
+
+    const manualSection = document.getElementById(
+        "manualMpesaSection"
+    );
+
+    const stkButton = document.getElementById(
+        "selectStkPayment"
+    );
+
+    const manualButton = document.getElementById(
+        "selectManualPayment"
+    );
+
+    // Hide both sections before showing the chosen method.
+    if (stkSection) {
+        stkSection.style.display = "none";
+    }
+
+    if (manualSection) {
+        manualSection.style.display = "none";
+    }
+
+    // Reset button highlighting.
+    if (stkButton) {
+        stkButton.classList.remove("active");
+        stkButton.setAttribute(
+            "aria-pressed",
+            "false"
         );
+    }
 
+    if (manualButton) {
+        manualButton.classList.remove("active");
+        manualButton.setAttribute(
+            "aria-pressed",
+            "false"
+        );
+    }
 
-    if (!status) {
+    // M-PESA STK PUSH.
+    if (method === "mpesa_stk" || method === "mpesa") {
+
+        if (stkSection) {
+            stkSection.style.display = "block";
+        }
+
+        if (stkButton) {
+            stkButton.classList.add("active");
+            stkButton.setAttribute(
+                "aria-pressed",
+                "true"
+            );
+        }
+
+        if (status) {
+            status.textContent =
+                "M-PESA STK selected. Enter your phone number and amount.";
+        }
+
         return;
     }
 
+    // MANUAL M-PESA PAYMENT.
+    if (method === "manual_mpesa" || method === "bank") {
 
-    if (
-        method ===
-        "mpesa"
-    ) {
+        if (manualSection) {
+            manualSection.style.display = "block";
+        }
 
-        status.textContent =
-            "M-PESA STK selected. Enter your M-PESA phone number.";
+        if (manualButton) {
+            manualButton.classList.add("active");
+            manualButton.setAttribute(
+                "aria-pressed",
+                "true"
+            );
+        }
 
+        if (status) {
+            status.textContent =
+                "Manual M-PESA selected. Enter the transaction code and upload your payment screenshot.";
+        }
+
+        return;
     }
 
-
-    if (
-        method ===
-        "bank"
-    ) {
-
+    // Handle unsupported methods safely.
+    if (status) {
         status.textContent =
-            "Bank payment selected. Bank payment will be connected next.";
+            "Please select M-PESA STK Push or Manual M-PESA.";
+    }
+}
+// ======================================================
+// CCS VSN30 — MANUAL M-PESA PAYMENT AND SCREENSHOT
+// ======================================================
 
+async function submitManualContributionPayment() {
+
+    const status = document.getElementById(
+        "contributionStatus"
+    );
+
+    const submitButton = document.getElementById(
+        "submitManualContributionButton"
+    );
+
+    const amountInput = document.getElementById(
+        "calculatedContributionTotal"
+    );
+
+    const phoneInput = document.getElementById(
+        "manualMpesaPhone"
+    );
+
+    const referenceInput = document.getElementById(
+        "manualMpesaReference"
+    );
+
+    const screenshotInput = document.getElementById(
+        "contributionScreenshot"
+    );
+
+    const typeInput = document.getElementById(
+        "contributionType"
+    );
+
+    const startInput = document.getElementById(
+        "contributionStartDate"
+    );
+
+    const endInput = document.getElementById(
+        "contributionEndDate"
+    );
+
+    const periodInput = document.getElementById(
+        "contributionPeriod"
+    );
+
+    if (!status || !submitButton) {
+        alert("The contribution form could not be found.");
+        return;
     }
 
+    // Confirm that Supabase has been initialized.
+    if (!supabaseClient) {
+        status.textContent =
+            "Connection is not ready. Please refresh and log in again.";
+        return;
+    }
+
+    // Get the signed-in user.
+    let user;
+
+    try {
+        const { data, error } =
+            await supabaseClient.auth.getUser();
+
+        if (error) {
+            throw error;
+        }
+
+        user = data.user;
+
+    } catch (error) {
+        console.error("Authentication error:", error);
+
+        status.textContent =
+            "Could not verify your login. Please log in again.";
+
+        return;
+    }
+
+    if (!user) {
+        status.textContent =
+            "Please log in before submitting a contribution.";
+        return;
+    }
+
+    // Validate the payment amount displayed by the calculator.
+    const amountText = amountInput.textContent
+        .replace(/[^0-9.]/g, "");
+
+    const amount = Number(amountText);
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+        status.textContent =
+            "Please select a valid contribution period.";
+        return;
+    }
+
+    // Read the manual payment details.
+    const phone = phoneInput.value.trim();
+
+    const reference = referenceInput.value
+        .trim()
+        .toUpperCase();
+
+    const screenshot = screenshotInput.files[0];
+
+    if (!phone) {
+        status.textContent =
+            "Enter the phone number used for payment.";
+        phoneInput.focus();
+        return;
+    }
+
+    if (!/^(?:07|01)\d{8}$/.test(phone)) {
+        status.textContent =
+            "Enter a valid Kenyan phone number, for example 0712345678.";
+        phoneInput.focus();
+        return;
+    }
+
+    if (!reference) {
+        status.textContent =
+            "Enter the M-PESA transaction code.";
+        referenceInput.focus();
+        return;
+    }
+
+    if (!/^[A-Z0-9]{6,30}$/.test(reference)) {
+        status.textContent =
+            "Check the transaction code. Enter 6–30 letters or numbers.";
+        referenceInput.focus();
+        return;
+    }
+
+    if (!screenshot) {
+        status.textContent =
+            "Please choose the M-PESA payment screenshot.";
+        screenshotInput.focus();
+        return;
+    }
+
+    // Accept JPG/JPEG and PNG images up to 5 MB.
+    const allowedTypes = [
+        "image/jpeg",
+        "image/png"
+    ];
+
+    if (!allowedTypes.includes(screenshot.type)) {
+        status.textContent =
+            "The screenshot must be a JPG or PNG image.";
+        return;
+    }
+
+    if (screenshot.size > 5 * 1024 * 1024) {
+        status.textContent =
+            "The screenshot exceeds 5 MB. Please choose a smaller image.";
+        return;
+    }
+
+    const startDate = startInput.value;
+    const endDate = endInput.value;
+
+    if (!startDate || !endDate || endDate < startDate) {
+        status.textContent =
+            "Please select a valid contribution period.";
+        return;
+    }
+
+    const submissionType = typeInput.value;
+
+    if (!["contribution", "advance"].includes(submissionType)) {
+        status.textContent =
+            "Please choose a valid contribution type.";
+        return;
+    }
+
+    // Disable the button to prevent accidental duplicate submissions.
+    submitButton.disabled = true;
+
+    let uploadedPath = null;
+
+    try {
+
+        status.textContent =
+            "Checking the contribution schedule...";
+
+        // Find the enabled daily contribution schedule.
+        const { data: schedules, error: scheduleError } =
+            await supabaseClient
+                .from("contribution_schedules")
+                .select("id, required_amount, is_enabled")
+                .eq("schedule_type", "daily")
+                .eq("is_enabled", true)
+                .limit(1);
+
+        if (scheduleError) {
+            throw new Error(
+                "Could not load the contribution schedule: " +
+                scheduleError.message
+            );
+        }
+
+        if (!schedules || schedules.length === 0) {
+            throw new Error(
+                "No enabled daily contribution schedule exists. " +
+                "The Admin must activate the KSh 50 daily schedule first."
+            );
+        }
+
+        const schedule = schedules[0];
+
+        if (Number(schedule.required_amount) !== 50) {
+            throw new Error(
+                "The enabled daily schedule is not KSh 50. " +
+                "Please ask the Admin to check the schedule."
+            );
+        }
+
+        status.textContent =
+            "Uploading payment screenshot...";
+
+        // Use a unique filename inside the member's own folder.
+        const safeName = screenshot.name
+            .replace(/[^a-zA-Z0-9._-]/g, "_");
+
+        const filePath =
+            user.id + "/" +
+            Date.now() + "_" +
+            safeName;
+
+        // Upload to the existing private storage bucket.
+        const { data: uploadData, error: uploadError } =
+            await supabaseClient.storage
+                .from("contribution-payment-evidence")
+                .upload(filePath, screenshot, {
+                    cacheControl: "3600",
+                    upsert: false,
+                    contentType: screenshot.type
+                });
+
+        if (uploadError) {
+            throw new Error(
+                "Screenshot upload failed: " +
+                uploadError.message
+            );
+        }
+
+        uploadedPath = uploadData.path;
+
+        status.textContent =
+            "Screenshot uploaded. Submitting payment details...";
+
+        // Save the submission as pending verification.
+        const { data: result, error: submissionError } =
+            await supabaseClient.rpc(
+                "submit_contribution_payment",
+                {
+                    p_amount: amount,
+                    p_payment_method: "mpesa",
+                    p_payment_phone: phone,
+                    p_transaction_reference: reference,
+                    p_schedule_id: schedule.id,
+                    p_screenshot_path: uploadedPath,
+                    p_submission_type: submissionType,
+                    p_coverage_start: startDate,
+                    p_coverage_end: endDate
+                }
+            );
+
+        if (submissionError) {
+            throw new Error(
+                "Payment submission failed: " +
+                submissionError.message
+            );
+        }
+
+        // Handle the response from the existing RPC.
+        if (result && result.success === false) {
+            throw new Error(
+                result.message ||
+                "The payment submission was not accepted."
+            );
+        }
+
+        status.textContent =
+            "Payment submitted successfully for verification. " +
+            "Your payment has not yet been approved.";
+
+        alert(
+            "Your payment details and screenshot have been submitted. " +
+            "The Admin/Treasurer must verify the payment before it is approved."
+        );
+
+        // Clear the submitted form fields.
+        phoneInput.value = "";
+        referenceInput.value = "";
+        screenshotInput.value = "";
+
+    } catch (error) {
+
+        console.error(
+            "Manual contribution submission error:",
+            error
+        );
+
+        status.textContent =
+            error.message ||
+            "An error occurred while submitting your payment.";
+
+        /*
+         * We deliberately do not delete an uploaded screenshot here.
+         * A submission error may happen after the upload succeeds.
+         * Keeping the file avoids accidentally removing evidence.
+         */
+
+    } finally {
+
+        submitButton.disabled = false;
+
+    }
+}
+// ========================================================
+// CCS VSN30 — TREASURER PAYMENT REVIEW DASHBOARD
+// ========================================================
+
+window.openTreasurerDashboard = async function () {
+    const status = document.getElementById(
+        "treasurerReviewStatus"
+    );
+
+    const panel = document.getElementById(
+        "treasurerPanel"
+    );
+
+    if (status) {
+        status.textContent = "Checking your permissions...";
+    }
+
+    try {
+        const {
+            data: { user },
+            error: authError
+        } = await supabaseClient.auth.getUser();
+
+        if (authError || !user) {
+            throw new Error("Please log in first.");
+        }
+
+        const { data: profile, error: profileError } =
+            await supabaseClient
+                .from("profiles")
+                .select("role, is_active")
+                .eq("id", user.id)
+                .single();
+
+        if (profileError) throw profileError;
+
+        const role = String(profile.role || "").toLowerCase();
+
+        if (
+            profile.is_active !== true ||
+            !["admin", "treasurer"].includes(role)
+        ) {
+            if (panel) panel.style.display = "none";
+
+            throw new Error(
+                "Access denied. Only an active Admin or Treasurer can review payments."
+            );
+        }
+
+        if (panel) {
+            panel.style.display = "block";
+            panel.scrollIntoView({
+                behavior: "smooth",
+                block: "start"
+            });
+        }
+
+        await loadTreasurerReviews();
+
+    } catch (error) {
+        if (status) {
+            status.textContent =
+                error.message || "Could not open Treasurer Dashboard.";
+        }
+    }
+};
+
+
+// ========================================================
+// LOAD PENDING PAYMENT SUBMISSIONS
+// ========================================================
+
+window.loadTreasurerReviews = async function () {
+    const list = document.getElementById(
+        "treasurerPendingPaymentsList"
+    );
+
+    const status = document.getElementById(
+        "treasurerReviewStatus"
+    );
+
+    const count = document.getElementById(
+        "treasurerPendingCount"
+    );
+
+    if (!list) return;
+
+    list.innerHTML = "<p>Loading payment submissions...</p>";
+
+    if (status) {
+        status.textContent = "";
+    }
+
+    try {
+        const { data, error } = await supabaseClient.rpc(
+            "get_pending_contribution_reviews"
+        );
+
+        if (error) throw error;
+
+        const submissions = Array.isArray(data) ? data : [];
+
+        if (count) {
+            count.textContent = String(submissions.length);
+        }
+
+        if (submissions.length === 0) {
+            list.innerHTML =
+                "<p>No pending contribution payments require review.</p>";
+
+            if (status) {
+                status.textContent = "Payment review list updated.";
+            }
+
+            return;
+        }
+
+        list.innerHTML = "";
+
+        for (const item of submissions) {
+            const card = document.createElement("div");
+
+            card.className = "dashboard-card";
+
+            const escapeHTML = value =>
+                String(value ?? "").replace(
+                    /[&<>"']/g,
+                    character => ({
+                        "&": "&amp;",
+                        "<": "&lt;",
+                        ">": "&gt;",
+                        '"': "&quot;",
+                        "'": "&#39;"
+                    })[character]
+                );
+
+            const amount = Number(item.amount || 0);
+
+            const amountText = amount.toLocaleString(
+                "en-KE",
+                {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                }
+            );
+
+            const start = item.coverage_start || "Not provided";
+            const end = item.coverage_end || "Not provided";
+
+            const submissionType =
+                String(item.submission_type || "").toLowerCase();
+
+            const typeLabel =
+                submissionType === "advance"
+                    ? "Advance Contribution"
+                    : "Regular Contribution";
+
+            const submittedDate = item.submitted_at
+                ? new Date(item.submitted_at).toLocaleString()
+                : "Not available";
+
+            let screenshotLink =
+                "<p>No screenshot was attached.</p>";
+
+            // Generate a temporary link for the private screenshot.
+            if (item.screenshot_path) {
+                const { data: signedData, error: signedError } =
+                    await supabaseClient.storage
+                        .from("contribution-payment-evidence")
+                        .createSignedUrl(item.screenshot_path, 300);
+
+                if (!signedError && signedData?.signedUrl) {
+                    screenshotLink = `
+                        <a
+                            href="${escapeHTML(signedData.signedUrl)}"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                        >
+                            🖼️ View Payment Screenshot
+                        </a>
+                    `;
+                } else {
+                    screenshotLink =
+                        "<p>Screenshot unavailable. Check storage permissions.</p>";
+                }
+            }
+
+            card.innerHTML = `
+                <h3>Payment Awaiting Review</h3>
+
+                <p>
+                    <strong>Member:</strong>
+                    ${escapeHTML(item.member_name)}
+                </p>
+
+                <p>
+                    <strong>Member Phone:</strong>
+                    ${escapeHTML(item.member_phone)}
+                </p>
+
+                <p>
+                    <strong>Contribution Type:</strong>
+                    ${escapeHTML(typeLabel)}
+                </p>
+
+                <p>
+                    <strong>Amount:</strong>
+                    KSh ${amountText}
+                </p>
+
+                <p>
+                    <strong>Payment Method:</strong>
+                    ${escapeHTML(item.payment_method)}
+                </p>
+
+                <p>
+                    <strong>M-PESA Phone:</strong>
+                    ${escapeHTML(item.payment_phone)}
+                </p>
+
+                <p>
+                    <strong>Transaction Code:</strong>
+                    ${escapeHTML(item.transaction_reference)}
+                </p>
+
+                <p>
+                    <strong>Coverage Start:</strong>
+                    ${escapeHTML(start)}
+                </p>
+
+                <p>
+                    <strong>Coverage End:</strong>
+                    ${escapeHTML(end)}
+                </p>
+
+                <p>
+                    <strong>Submitted:</strong>
+                    ${escapeHTML(submittedDate)}
+                </p>
+
+                <p>
+                    <strong>Submission ID:</strong>
+                    ${escapeHTML(item.submission_id)}
+                </p>
+
+                <p>
+                    <strong>Payment Evidence:</strong>
+                    ${screenshotLink}
+                </p>
+
+                <label>
+                    Review Note
+                </label>
+
+                <textarea
+                    id="reviewNote_${escapeHTML(item.submission_id)}"
+                    rows="2"
+                    maxlength="500"
+                    placeholder="Optional approval note, or required rejection reason"
+                ></textarea>
+
+                <button
+                    type="button"
+                    onclick="reviewTreasurerPayment(
+                        '${escapeHTML(item.submission_id)}',
+                        '${escapeHTML(submissionType)}',
+                        'approve'
+                    )"
+                >
+                    ✅ Approve Payment
+                </button>
+
+                <button
+                    type="button"
+                    class="secondary"
+                    onclick="reviewTreasurerPayment(
+                        '${escapeHTML(item.submission_id)}',
+                        '${escapeHTML(submissionType)}',
+                        'reject'
+                    )"
+                >
+                    ❌ Reject Payment
+                </button>
+            `;
+
+            list.appendChild(card);
+        }
+
+        if (status) {
+            status.textContent =
+                "Loaded " + submissions.length +
+                " pending payment submission(s).";
+        }
+
+    } catch (error) {
+        list.innerHTML = "";
+
+        if (status) {
+            status.textContent =
+                "Could not load payments: " +
+                (error.message || "Unknown error");
+        }
+
+        console.error(
+            "Treasurer payment loading error:",
+            error
+        );
+    }
+};
+
+
+// ========================================================
+// APPROVE OR REJECT A PAYMENT
+// ========================================================
+
+window.reviewTreasurerPayment = async function (
+    submissionId,
+    submissionType,
+    decision
+) {
+    const status = document.getElementById(
+        "treasurerReviewStatus"
+    );
+
+    const noteField = document.getElementById(
+        "reviewNote_" + submissionId
+    );
+
+    const reviewNote = noteField
+        ? noteField.value.trim()
+        : "";
+
+    if (decision === "reject" && !reviewNote) {
+        alert("Enter a reason before rejecting this payment.");
+        return;
+    }
+
+    const confirmed = confirm(
+        decision === "approve"
+            ? "Have you verified the payment against the actual M-PESA transaction? Approve it now?"
+            : "Are you sure you want to reject this payment?"
+    );
+
+    if (!confirmed) return;
+
+    try {
+        if (status) {
+            status.textContent = "Processing your decision...";
+        }
+
+        let result;
+
+if (submissionType === "advance") {
+    result = await supabaseClient.rpc(
+        "review_advance_contribution_payment",
+        {
+            p_submission_id: submissionId,
+            p_decision:
+                decision === "approve"
+                    ? "approved"
+                    : "rejected",
+            p_review_note: reviewNote || null
+        }
+    );
+} else {
+    result = await supabaseClient.rpc(
+        "review_contribution_payment",
+        {
+            p_submission_id: submissionId,
+            p_decision:
+                decision === "approve"
+                    ? "approved"
+                    : "rejected",
+            p_review_note: reviewNote || null
+        }
+    );
 }
 
+if (result.error) {
+    throw result.error;
+}
 
+if (!result.data || result.data.success !== true) {
+    throw new Error(
+        result.data?.message ||
+        "Supabase did not confirm the payment review."
+    );
+}
+
+if (!result.data || result.data.success !== true) {
+    throw new Error(
+        result.data?.message ||
+        "Supabase did not confirm the payment review."
+    );
+}
+
+        if (status) {
+            status.textContent =
+                decision === "approve"
+                    ? "Payment approved successfully."
+                    : "Payment rejected.";
+        }
+
+        alert(
+            decision === "approve"
+                ? "Payment approved."
+                : "Payment rejected."
+        );
+
+// Refresh the pending payment list.
+await window.loadTreasurerReviews();
+
+// Refresh payment history without hiding
+// a successful review if history loading fails.
+try {
+    if (
+        typeof window.loadTreasurerPaymentHistory === "function"
+    ) {
+        await window.loadTreasurerPaymentHistory("all");
+    }
+} catch (historyError) {
+    console.error(
+        "Payment history refresh error:",
+        historyError
+    );
+}
+    } catch (error) {
+        console.error(
+            "Treasurer review error:",
+            error
+        );
+
+        if (status) {
+            status.textContent =
+                "Review failed: " +
+                (error.message || "Unknown error");
+        }
+
+        alert(
+            "Could not process the review. " +
+            (error.message || "Check the Supabase function and permissions.")
+        );
+    }
+};
+// ========================================================
+// LOAD APPROVED AND REJECTED PAYMENT HISTORY
+// ========================================================
+
+window.loadTreasurerPaymentHistory = async function (
+filter = "all"
+) {
+const list = document.getElementById(
+"treasurerPaymentHistoryList"
+);
+
+const status = document.getElementById(
+    "treasurerHistoryStatus"
+);
+
+if (!list) return;
+
+const escapeHTML = value =>
+    String(value ?? "").replace(
+        /[&<>"']/g,
+        character => ({
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#39;"
+        })[character]
+    );
+
+list.innerHTML = "<p>Loading payment history...</p>";
+
+if (status) {
+    status.textContent = "";
+}
+
+try {
+    const { data, error } = await supabaseClient.rpc(
+        "get_contribution_payment_history"
+    );
+
+    if (error) throw error;
+
+    const records = Array.isArray(data) ? data : [];
+
+    const reviewedRecords = records.filter(item => {
+        const paymentStatus = String(
+            item.status || ""
+        ).toLowerCase();
+
+        if (filter === "approved") {
+            return paymentStatus === "approved";
+        }
+
+        if (filter === "rejected") {
+            return paymentStatus === "rejected";
+        }
+
+        return (
+            paymentStatus === "approved" ||
+            paymentStatus === "rejected"
+        );
+    });
+
+    if (reviewedRecords.length === 0) {
+        list.innerHTML =
+            "<p>No payments found in this history.</p>";
+
+        if (status) {
+            status.textContent =
+                "No reviewed payments match this filter.";
+        }
+
+        return;
+    }
+
+    list.innerHTML = "";
+
+    for (const item of reviewedRecords) {
+        const card = document.createElement("div");
+
+        card.className = "dashboard-card";
+
+        const paymentStatus = String(
+            item.status || ""
+        ).toLowerCase();
+
+        const amount = Number(item.amount || 0)
+            .toLocaleString("en-KE", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            });
+
+        const submittedDate = item.submitted_at
+            ? new Date(
+                item.submitted_at
+            ).toLocaleString()
+            : "Not available";
+
+        const reviewedDate = item.reviewed_at
+            ? new Date(
+                item.reviewed_at
+            ).toLocaleString()
+            : "Not available";
+
+        const statusLabel =
+            paymentStatus === "approved"
+                ? "✅ APPROVED"
+                : "❌ REJECTED";
+
+        const typeLabel =
+            String(item.submission_type || "")
+                .toLowerCase() === "advance"
+                ? "Advance Contribution"
+                : "Regular Contribution";
+
+        card.innerHTML = `
+            <h3>${statusLabel}</h3>
+
+            <p>
+                <strong>Member:</strong>
+                ${escapeHTML(item.member_name)}
+            </p>
+
+            <p>
+                <strong>Member Phone:</strong>
+                ${escapeHTML(item.member_phone)}
+            </p>
+
+            <p>
+                <strong>Contribution Type:</strong>
+                ${escapeHTML(typeLabel)}
+            </p>
+
+            <p>
+                <strong>Amount:</strong>
+                KSh ${amount}
+            </p>
+
+            <p>
+                <strong>Payment Method:</strong>
+                ${escapeHTML(item.payment_method)}
+            </p>
+
+            <p>
+                <strong>Transaction Reference:</strong>
+                ${escapeHTML(item.transaction_reference)}
+            </p>
+
+            <p>
+                <strong>Submitted:</strong>
+                ${escapeHTML(submittedDate)}
+            </p>
+
+            <p>
+                <strong>Reviewed:</strong>
+                ${escapeHTML(reviewedDate)}
+            </p>
+
+            <p>
+                <strong>Reviewed By:</strong>
+                ${escapeHTML(item.reviewer_name)}
+            </p>
+
+            <p>
+                <strong>Review Note:</strong>
+                ${escapeHTML(item.review_note || "No note provided")}
+            </p>
+        `;
+
+        list.appendChild(card);
+    }
+
+    if (status) {
+        status.textContent =
+            "Loaded " + reviewedRecords.length +
+            " reviewed payment(s).";
+    }
+
+} catch (error) {
+    console.error(
+        "Payment history loading error:",
+        error
+    );
+
+    list.innerHTML =
+        "<p>Payment history could not be loaded.</p>";
+
+    if (status) {
+        status.textContent =
+            "History error: " +
+            (error.message || "Unknown error");
+    }
+}
+
+};
+// ==================================================
+// CCS VSN30 — CONTRIBUTION PERIOD CALCULATOR
+// KSh 50 per day; both dates are inclusive
+// ==================================================
+
+(function initializeContributionCalculator() {
+    const period = document.getElementById(
+        "contributionPeriod"
+    );
+
+    const startDate = document.getElementById(
+        "contributionStartDate"
+    );
+
+    const endDate = document.getElementById(
+        "contributionEndDate"
+    );
+
+    const customSection = document.getElementById(
+        "customContributionEndSection"
+    );
+
+    const daysDisplay = document.getElementById(
+        "calculatedContributionDays"
+    );
+
+    const totalDisplay = document.getElementById(
+        "calculatedContributionTotal"
+    );
+
+    const statusDisplay = document.getElementById(
+        "contributionCalculationStatus"
+    );
+
+    if (
+        !period ||
+        !startDate ||
+        !endDate ||
+        !customSection ||
+        !daysDisplay ||
+        !totalDisplay ||
+        !statusDisplay
+    ) {
+        console.warn(
+            "CCS contribution calculator: required HTML fields missing."
+        );
+        return;
+    }
+
+    // Format a date using local calendar components.
+    function formatLocalDate(date) {
+        return [
+            date.getFullYear(),
+            String(date.getMonth() + 1).padStart(2, "0"),
+            String(date.getDate()).padStart(2, "0")
+        ].join("-");
+    }
+
+    // Add calendar days without changing the original date.
+    function addCalendarDays(dateString, numberOfDays) {
+        const parts = dateString.split("-").map(Number);
+
+        const date = new Date(
+            parts[0],
+            parts[1] - 1,
+            parts[2]
+        );
+
+        date.setDate(
+            date.getDate() + numberOfDays
+        );
+
+        return formatLocalDate(date);
+    }
+
+    // Convert YYYY-MM-DD to a UTC day number.
+    function getCalendarDayNumber(dateString) {
+        const parts = dateString.split("-").map(Number);
+
+        return Date.UTC(
+            parts[0],
+            parts[1] - 1,
+            parts[2]
+        ) / 86400000;
+    }
+
+    // Initialize the start date to today if empty.
+    if (!startDate.value) {
+        startDate.value = formatLocalDate(new Date());
+    }
+
+    function calculateContributionTotal() {
+        const start = startDate.value;
+        const selectedPeriod = period.value;
+
+        customSection.style.display =
+            selectedPeriod === "custom" ? "block" : "none";
+
+        let numberOfDays = 0;
+
+        if (!start) {
+            daysDisplay.textContent = "—";
+            totalDisplay.textContent = "—";
+
+            statusDisplay.textContent =
+                "Please select a start date.";
+
+            return;
+        }
+
+        if (selectedPeriod === "custom") {
+            const end = endDate.value;
+
+            if (!end) {
+                daysDisplay.textContent = "—";
+                totalDisplay.textContent = "—";
+
+                statusDisplay.textContent =
+                    "Please select an end date.";
+
+                return;
+            }
+
+            const startNumber =
+                getCalendarDayNumber(start);
+
+            const endNumber =
+                getCalendarDayNumber(end);
+
+            numberOfDays =
+                endNumber - startNumber + 1;
+
+            if (numberOfDays < 1) {
+                daysDisplay.textContent = "—";
+                totalDisplay.textContent = "—";
+
+                statusDisplay.textContent =
+                    "The end date cannot be before the start date.";
+
+                return;
+            }
+        } else {
+            numberOfDays = Number(selectedPeriod);
+
+            if (
+                !Number.isInteger(numberOfDays) ||
+                numberOfDays < 1
+            ) {
+                daysDisplay.textContent = "—";
+                totalDisplay.textContent = "—";
+
+                statusDisplay.textContent =
+                    "Please select a valid contribution period.";
+
+                return;
+            }
+
+            // For fixed periods, calculate the end date.
+            endDate.value = addCalendarDays(
+                start,
+                numberOfDays - 1
+            );
+        }
+
+        const dailyRate = 50;
+
+        const totalAmount =
+            numberOfDays * dailyRate;
+
+        daysDisplay.textContent =
+            numberOfDays +
+            (numberOfDays === 1 ? " day" : " days");
+
+        totalDisplay.textContent =
+            "KSh " +
+            totalAmount.toLocaleString("en-KE");
+
+        statusDisplay.textContent =
+            numberOfDays +
+            " days × KSh 50 = KSh " +
+            totalAmount.toLocaleString("en-KE");
+    }
+
+    period.addEventListener(
+        "change",
+        calculateContributionTotal
+    );
+
+    startDate.addEventListener(
+        "change",
+        calculateContributionTotal
+    );
+
+    endDate.addEventListener(
+        "change",
+        calculateContributionTotal
+    );
+
+    calculateContributionTotal();
+
+})();
 // =====================================================
 // START CONTRIBUTION PAYMENT
 // =====================================================
@@ -3835,3317 +5865,3 @@ async function startContributionPayment() {
                         payment_status:
                             "pending",
 
-                        payment_phone:
-                            normalizePhone(
-                                phone
-                            )
-
-                    }
-                ])
-                .select()
-                .single();
-
-
-        if (contributionError) {
-
-            console.error(
-                "Contribution creation error:",
-                contributionError
-            );
-
-            status.textContent =
-                "Could not create contribution: " +
-                contributionError.message;
-
-            return;
-
-        }
-
-
-        console.log(
-            "Pending contribution created:",
-            contribution
-        );
-
-
-        // =================================================
-        // SEND STK PUSH
-        // =================================================
-
-        status.textContent =
-            "Sending M-PESA STK Push...";
-
-
-        const {
-            data: functionData,
-            error: functionError
-        } =
-            await supabaseClient.functions.invoke(
-                "mpesa-stk",
-                {
-                    body: {
-
-                        phone:
-                            normalizePhone(
-                                phone
-                            ),
-
-                        amount:
-                            amount,
-
-                        contribution_id:
-                            contribution.id
-
-                    }
-                }
-            );
-
-
-        if (functionError) {
-
-            console.error(
-                "STK function error:",
-                functionError
-            );
-
-            status.textContent =
-                "Could not start M-PESA payment: " +
-                functionError.message;
-
-            return;
-
-        }
-
-
-        console.log(
-            "STK response:",
-            functionData
-        );
-
-
-        if (
-            !functionData ||
-            !functionData.success
-        ) {
-
-            status.textContent =
-                "M-PESA payment could not be started: " +
-                (
-                    functionData?.error ||
-                    "Unknown error"
-                );
-
-            return;
-
-        }
-
-
-        status.textContent =
-            "STK Push sent! Check your phone and enter your M-PESA PIN.";
-
-    } catch (error) {
-
-        console.error(
-            "Contribution payment error:",
-            error
-        );
-
-        status.textContent =
-            "Payment error: " +
-            error.message;
-
-    }
-
-}
-
-
-// =====================================================
-// MAKE FUNCTIONS AVAILABLE TO HTML onclick=""
-// =====================================================
-
-window.showScreen =
-    showScreen;
-
-window.goToSubscription =
-    goToSubscription;
-
-window.startPayment =
-    startPayment;
-
-window.verifyOTP =
-    verifyOTP;
-
-window.loginUser =
-    loginUser;
-
-window.requestPasswordReset =
-    requestPasswordReset;
-
-window.resetPassword =
-    resetPassword;
-
-window.createWithdrawal =
-    createWithdrawal;
-
-window.logoutUser =
-    logoutUser;
-
-window.loadWithdrawalVoting =
-    loadWithdrawalVoting;
-
-window.voteOnWithdrawal =
-    voteOnWithdrawal;
-
-window.rejectWithdrawal =
-    rejectWithdrawal;
-
-window.openAdminPanel =
-    openAdminPanel;
-
-window.closeAdminPanel =
-    closeAdminPanel;
-
-window.loadAdminMembers =
-    loadAdminMembers;
-
-window.loadAdminContributions =
-    loadAdminContributions;
-
-window.loadAdminWithdrawals =
-    loadAdminWithdrawals;
-
-window.loadAdminVoting =
-    loadAdminVoting;
-
-window.selectContributionMethod =
-    selectContributionMethod;
-
-window.startContributionPayment =
-    startContributionPayment;
-
-window.isValidPhone =
-    isValidPhone;
-
-window.normalizePhone =
-    normalizePhone;
-
-
-console.log(
-    "CCS VSN30 functions loaded successfully"
-);
-/* =========================================
-   CCS VSN30 — REPORTS, FORUM & MESSAGES
-========================================= */
-
-(function () {
-    "use strict";
-
-    let contributionsChart = null;
-    let withdrawalsChart = null;
-
-    const CCS_WHATSAPP_LINK =
-        "https://chat.whatsapp.com/Jh5VFBAX2DT8zSsSwWfbon?s=cl&p=a&mlu=4&ilr=4&iam=0";
-
-    function ccsUserId() {
-        return window.currentProfile?.id ||
-               (typeof currentProfile !== "undefined"
-                   ? currentProfile?.id
-                   : null);
-    }
-
-    function ccsProfile() {
-        return window.currentProfile ||
-            (typeof currentProfile !== "undefined"
-                ? currentProfile
-                : null);
-    }
-
-    function ccsElement(id) {
-        return document.getElementById(id);
-    }
-
-    function ccsStatus(id, message, error) {
-        const element = ccsElement(id);
-        if (!element) return;
-
-        element.textContent = message;
-        element.style.color = error ? "#ff7777" : "#5bdcff";
-    }
-
-    function ccsMoney(amount) {
-        return Number(amount || 0).toLocaleString("en-KE", {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2
-        });
-    }
-
-    function ccsDate(date) {
-        if (!date) return "Date unavailable";
-
-        const parsed = new Date(date);
-
-        if (Number.isNaN(parsed.getTime())) {
-            return "Date unavailable";
-        }
-
-        return parsed.toLocaleString("en-KE", {
-            dateStyle: "medium",
-            timeStyle: "short"
-        });
-    }
-
-    function ccsMake(tag, text, className) {
-        const element = document.createElement(tag);
-
-        if (text !== undefined && text !== null) {
-            element.textContent = String(text);
-        }
-
-        if (className) {
-            element.className = className;
-        }
-
-        return element;
-    }
-
-    function ccsRequireLogin() {
-        if (!ccsUserId()) {
-            alert("Please log in first.");
-            return false;
-        }
-
-        if (!window.supabaseClient &&
-            typeof supabaseClient === "undefined") {
-            alert("Supabase is not initialized. Please refresh the app.");
-            return false;
-        }
-
-        return true;
-    }
-
-    function ccsDb() {
-        return window.supabaseClient ||
-            (typeof supabaseClient !== "undefined"
-                ? supabaseClient
-                : null);
-    }
-
-    /* =========================================
-       BOTTOM NAVIGATION
-    ========================================= */
-
-    window.navigateDashboard = async function (targetId) {
-        const target = ccsElement(targetId);
-
-        if (!target) {
-            alert("Section not found: " + targetId);
-            return;
-        }
-
-        if (targetId === "dashboardScreen") {
-            target.scrollIntoView({
-                behavior: "smooth",
-                block: "start"
-            });
-            return;
-        }
-
-        if (!ccsRequireLogin()) return;
-
-        target.scrollIntoView({
-            behavior: "smooth",
-            block: "start"
-        });
-
-        if (targetId === "reportsPanel") {
-            await window.loadReports();
-        }
-
-        if (targetId === "forumPanel") {
-            await window.loadForum();
-        }
-
-        if (targetId === "messagesPanel") {
-            await window.loadMemberDirectory();
-            await window.loadPrivateMessages();
-        }
-    };
-
-    /* =========================================
-       MEMBER DIRECTORY
-    ========================================= */
-
-    window.loadMemberDirectory = async function () {
-        if (!ccsRequireLogin()) return;
-
-        const select = ccsElement("messageRecipient");
-        if (!select) return;
-
-        const db = ccsDb();
-        const myId = ccsUserId();
-
-        const { data, error } = await db
-            .from("profiles")
-            .select("id, full_name, role, is_active")
-            .eq("is_active", true)
-            .order("full_name", { ascending: true });
-
-        if (error) {
-            ccsStatus(
-                "messageStatus",
-                "Could not load members. Check profiles table permissions.",
-                true
-            );
-            console.error("Member directory:", error);
-            return;
-        }
-
-        const previousValue = select.value;
-
-        select.replaceChildren();
-
-        const placeholder = ccsMake(
-            "option",
-            "Choose a member to message"
-        );
-
-        placeholder.value = "";
-        select.appendChild(placeholder);
-
-        (data || [])
-            .filter(member => member.id !== myId)
-            .forEach(member => {
-                const option = ccsMake(
-                    "option",
-                    member.full_name || member.role || "Member"
-                );
-
-                option.value = member.id;
-                select.appendChild(option);
-            });
-
-        if ([...select.options].some(
-            option => option.value === previousValue
-        )) {
-            select.value = previousValue;
-        }
-    };
-
-    /* =========================================
-       REPORTS AND CHARTS
-    ========================================= */
-
-    window.loadReports = async function () {
-        if (!ccsRequireLogin()) return;
-
-        const db = ccsDb();
-
-        ccsStatus("reportContributions", "Loading contributions…");
-        ccsStatus("reportWithdrawals", "Loading withdrawals…");
-
-        const [contributionResult, withdrawalResult] =
-            await Promise.all([
-                db.from("contributions")
-                    .select("*")
-                    .limit(5000),
-
-                db.from("withdrawals")
-                    .select("*")
-                    .limit(5000)
-            ]);
-
-        if (contributionResult.error) {
-            ccsStatus(
-                "reportContributions",
-                "Unable to load contribution records.",
-                true
-            );
-
-            console.error(
-                "Contribution report:",
-                contributionResult.error
-            );
-        }
-
-        if (withdrawalResult.error) {
-            ccsStatus(
-                "reportWithdrawals",
-                "Unable to load withdrawal records.",
-                true
-            );
-
-            console.error(
-                "Withdrawal report:",
-                withdrawalResult.error
-            );
-        }
-
-        const contributions = contributionResult.data || [];
-        const withdrawals = withdrawalResult.data || [];
-
-        const paidContributions = contributions.filter(
-            row => Number(row.amount_paid || 0) > 0
-        );
-
-        const approvedWithdrawals = withdrawals.filter(row => {
-            const status = String(row.status || "").toLowerCase();
-
-            return [
-                "approved",
-                "completed",
-                "paid",
-                "successful"
-            ].includes(status);
-        });
-
-        const contributionTotal = paidContributions.reduce(
-            (sum, row) => sum + Number(row.amount_paid || 0),
-            0
-        );
-
-        const withdrawalTotal = approvedWithdrawals.reduce(
-            (sum, row) => sum + Number(
-                row.amount ??
-                row.amount_requested ??
-                row.amount_withdrawn ??
-                0
-            ),
-            0
-        );
-
-        ccsStatus(
-            "reportContributions",
-            contributionResult.error
-                ? "Contribution data unavailable"
-                : "Total recorded contributions: KSh " +
-                  ccsMoney(contributionTotal)
-        );
-
-        ccsStatus(
-            "reportWithdrawals",
-            withdrawalResult.error
-                ? "Withdrawal data unavailable"
-                : "Total approved withdrawals: KSh " +
-                  ccsMoney(withdrawalTotal)
-        );
-
-        function monthlyTotals(rows, amountField, approvedOnly) {
-            const totals = {};
-
-            rows.forEach(row => {
-                const status = String(
-                    row.status || ""
-                ).toLowerCase();
-
-                if (
-                    approvedOnly &&
-                    ![
-                        "approved",
-                        "completed",
-                        "paid",
-                        "successful"
-                    ].includes(status)
-                ) {
-                    return;
-                }
-
-                const amount = Number(
-                    row[amountField] ??
-                    row.amount ??
-                    row.amount_requested ??
-                    row.amount_withdrawn ??
-                    0
-                );
-
-                const dateValue =
-                    row.paid_at ||
-                    row.created_at ||
-                    row.date ||
-                    row.withdrawal_date;
-
-                if (!dateValue || !Number.isFinite(amount)) return;
-
-                const date = new Date(dateValue);
-
-                if (Number.isNaN(date.getTime())) return;
-
-                const key =
-                    date.getFullYear() + "-" +
-                    String(date.getMonth() + 1).padStart(2, "0");
-
-                totals[key] = (totals[key] || 0) + amount;
-            });
-
-            return totals;
-        }
-
-        function chartLabels(totals) {
-            const keys = Object.keys(totals).sort().slice(-12);
-
-            if (!keys.length) {
-                return {
-                    labels: ["No data"],
-                    values: [0]
-                };
-            }
-
-            return {
-                labels: keys,
-                values: keys.map(key => totals[key])
-            };
-        }
-
-        if (typeof Chart !== "undefined") {
-            const contributionCanvas =
-                ccsElement("contributionsChart");
-
-            if (contributionCanvas && !contributionResult.error) {
-                const totals = monthlyTotals(
-                    paidContributions,
-                    "amount_paid",
-                    false
-                );
-
-                const result = chartLabels(totals);
-
-                if (contributionsChart) {
-                    contributionsChart.destroy();
-                }
-
-                contributionsChart = new Chart(
-                    contributionCanvas,
-                    {
-                        type: "bar",
-                        data: {
-                            labels: result.labels,
-                            datasets: [{
-                                label: "Contributions (KSh)",
-                                data: result.values,
-                                borderWidth: 1
-                            }]
-                        },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false
-                        }
-                    }
-                );
-            }
-
-            const withdrawalCanvas =
-                ccsElement("withdrawalsChart");
-
-            if (withdrawalCanvas && !withdrawalResult.error) {
-                const totals = monthlyTotals(
-                    approvedWithdrawals,
-                    "amount",
-                    false
-                );
-
-                const result = chartLabels(totals);
-
-                if (withdrawalsChart) {
-                    withdrawalsChart.destroy();
-                }
-
-                withdrawalsChart = new Chart(
-                    withdrawalCanvas,
-                    {
-                        type: "line",
-                        data: {
-                            labels: result.labels,
-                            datasets: [{
-                                label: "Approved withdrawals (KSh)",
-                                data: result.values,
-                                borderWidth: 2,
-                                tension: 0.25
-                            }]
-                        },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false
-                        }
-                    }
-                );
-            }
-        } else {
-            console.warn(
-                "Chart.js is missing. Add its CDN script before app.js."
-            );
-        }
-
-        await window.loadMemberPerformance(paidContributions);
-    };
-
-    /* =========================================
-       INDIVIDUAL MEMBER PERFORMANCE
-    ========================================= */
-
-    window.loadMemberPerformance = async function (records) {
-        if (!ccsRequireLogin()) return;
-
-        const container = ccsElement("memberPerformance");
-        if (!container) return;
-
-        container.replaceChildren(
-            ccsMake("p", "Loading member performance…")
-        );
-
-        const db = ccsDb();
-
-        if (!records) {
-            const result = await db
-                .from("contributions")
-                .select("*")
-                .limit(5000);
-
-            if (result.error) {
-                container.replaceChildren(
-                    ccsMake(
-                        "p",
-                        "Unable to load member contribution records."
-                    )
-                );
-                console.error(result.error);
-                return;
-            }
-
-            records = (result.data || []).filter(
-                row => Number(row.amount_paid || 0) > 0
-            );
-        }
-
-        const totals = {};
-
-        records.forEach(row => {
-            if (!row.user_id) return;
-
-            totals[row.user_id] =
-                (totals[row.user_id] || 0) +
-                Number(row.amount_paid || 0);
-        });
-
-        const profileResult = await db
-            .from("profiles")
-            .select("id, full_name, role")
-            .limit(1000);
-
-        const names = {};
-
-        if (!profileResult.error) {
-            (profileResult.data || []).forEach(profile => {
-                names[profile.id] =
-                    profile.full_name ||
-                    profile.role ||
-                    "Member";
-            });
-        }
-
-        container.replaceChildren();
-
-        const ranked = Object.entries(totals)
-            .sort((a, b) => b[1] - a[1]);
-
-        if (!ranked.length) {
-            container.appendChild(
-                ccsMake(
-                    "p",
-                    "No contribution records are available to display."
-                )
-            );
-            return;
-        }
-
-        ranked.forEach(([userId, total], index) => {
-            const item = ccsMake("div", null, "performance-item");
-
-            item.appendChild(
-                ccsMake(
-                    "h4",
-                    (index + 1) + ". " +
-                    (names[userId] || "Member")
-                )
-            );
-
-            item.appendChild(
-                ccsMake(
-                    "p",
-                    "Recorded contributions: KSh " + ccsMoney(total)
-                )
-            );
-
-            container.appendChild(item);
-        });
-
-        if (profileResult.error) {
-            console.warn(
-                "Member names could not be loaded:",
-                profileResult.error
-            );
-        }
-    };
-
-    /* =========================================
-       FORUM
-    ========================================= */
-
-    window.loadForum = async function () {
-        if (!ccsRequireLogin()) return;
-
-        const db = ccsDb();
-        const container = ccsElement("forumPostsList");
-
-        if (!container) return;
-
-        container.replaceChildren(
-            ccsMake("p", "Loading forum posts…")
-        );
-
-        const result = await db
-            .from("forum_posts")
-            .select("*")
-            .order("created_at", { ascending: false })
-            .limit(30);
-
-        if (result.error) {
-            container.replaceChildren(
-                ccsMake(
-                    "p",
-                    "Unable to load forum posts. Check your Supabase policies."
-                )
-            );
-
-            console.error("Forum loading:", result.error);
-            return;
-        }
-
-        container.replaceChildren();
-
-        const posts = result.data || [];
-
-        if (!posts.length) {
-            container.appendChild(
-                ccsMake("p", "No forum posts yet. Start a discussion!")
-            );
-            return;
-        }
-
-        const profileResult = await db
-            .from("profiles")
-            .select("id, full_name, role")
-            .limit(1000);
-
-        const names = {};
-
-        if (!profileResult.error) {
-            (profileResult.data || []).forEach(profile => {
-                names[profile.id] =
-                    profile.full_name ||
-                    profile.role ||
-                    "Member";
-            });
-        }
-
-        for (const post of posts) {
-            const card = ccsMake("article", null, "forum-post");
-
-            if (post.is_announcement) {
-                card.appendChild(
-                    ccsMake("strong", "📢 ADMIN ANNOUNCEMENT")
-                );
-            }
-
-            card.appendChild(
-                ccsMake("h4", post.title || "Forum discussion")
-            );
-
-            card.appendChild(
-                ccsMake(
-                    "small",
-                    "By " + (names[post.user_id] || "Member") +
-                    " • " + ccsDate(post.created_at)
-                )
-            );
-
-            card.appendChild(
-                ccsMake("p", post.body || "")
-            );
-
-            const commentsBox = ccsMake("div", null, "forum-comments");
-            commentsBox.appendChild(
-                ccsMake("strong", "Comments")
-            );
-
-            const commentsResult = await db
-                .from("forum_comments")
-                .select("*")
-                .eq("post_id", post.id)
-                .order("created_at", { ascending: true });
-
-            if (commentsResult.error) {
-                commentsBox.appendChild(
-                    ccsMake("p", "Comments could not be loaded.")
-                );
-            } else if (!commentsResult.data?.length) {
-                commentsBox.appendChild(
-                    ccsMake("p", "No comments yet.")
-                );
-            } else {
-                commentsResult.data.forEach(comment => {
-                    const commentBox = ccsMake(
-                        "div",
-                        null,
-                        "forum-comment"
-                    );
-
-                    commentBox.appendChild(
-                        ccsMake(
-                            "small",
-                            (names[comment.user_id] || "Member") +
-                            " • " + ccsDate(comment.created_at)
-                        )
-                    );
-
-                    commentBox.appendChild(
-                        ccsMake("p", comment.body || "")
-                    );
-
-                    commentsBox.appendChild(commentBox);
-                });
-            }
-
-            const commentInput = ccsMake("textarea");
-            commentInput.placeholder = "Write a comment…";
-            commentInput.rows = 2;
-            commentInput.maxLength = 2000;
-
-            const commentButton = ccsMake(
-                "button",
-                "Add Comment"
-            );
-
-            commentButton.type = "button";
-
-            commentButton.addEventListener("click", async () => {
-                const body = commentInput.value.trim();
-
-                if (!body) {
-                    alert("Please write a comment first.");
-                    return;
-                }
-
-                commentButton.disabled = true;
-
-                const insertResult = await db
-                    .from("forum_comments")
-                    .insert({
-                        post_id: post.id,
-                        user_id: ccsUserId(),
-                        body
-                    });
-
-                commentButton.disabled = false;
-
-                if (insertResult.error) {
-                    alert(
-                        "Comment failed: " + insertResult.error.message
-                    );
-                    return;
-                }
-
-                await window.loadForum();
-            });
-
-            card.appendChild(commentsBox);
-            card.appendChild(commentInput);
-            card.appendChild(commentButton);
-
-            container.appendChild(card);
-        }
-    };
-
-    window.createForumPost = async function () {
-        if (!ccsRequireLogin()) return;
-
-        const titleInput = ccsElement("forumTitle");
-        const bodyInput = ccsElement("forumBody");
-
-        const title = titleInput?.value.trim();
-        const body = bodyInput?.value.trim();
-
-        if (!title || !body) {
-            ccsStatus(
-                "forumStatus",
-                "Enter both a title and a message.",
-                true
-            );
-            return;
-        }
-
-        if (title.length > 150 || body.length > 5000) {
-            ccsStatus(
-                "forumStatus",
-                "Title limit: 150 characters. Message limit: 5,000.",
-                true
-            );
-            return;
-        }
-
-        const db = ccsDb();
-
-        const result = await db
-            .from("forum_posts")
-            .insert({
-                user_id: ccsUserId(),
-                title,
-                body,
-                is_announcement: false
-            });
-
-        if (result.error) {
-            ccsStatus(
-                "forumStatus",
-                "Could not publish post: " + result.error.message,
-                true
-            );
-            return;
-        }
-
-        titleInput.value = "";
-        bodyInput.value = "";
-
-        ccsStatus("forumStatus", "Post published successfully!");
-        await window.loadForum();
-    };
-
-    /* =========================================
-       PRIVATE MEMBER MESSAGES
-    ========================================= */
-
-    window.sendPrivateMessage = async function () {
-        if (!ccsRequireLogin()) return;
-
-        const recipient = ccsElement("messageRecipient")?.value;
-        const bodyInput = ccsElement("privateMessageBody");
-        const body = bodyInput?.value.trim();
-
-        if (!recipient) {
-            ccsStatus(
-                "messageStatus",
-                "Choose a member first.",
-                true
-            );
-            return;
-        }
-
-        if (!body) {
-            ccsStatus(
-                "messageStatus",
-                "Write a message first.",
-                true
-            );
-            return;
-        }
-
-        if (body.length > 5000) {
-            ccsStatus(
-                "messageStatus",
-                "Messages must be 5,000 characters or fewer.",
-                true
-            );
-            return;
-        }
-
-        const result = await ccsDb()
-            .from("private_messages")
-            .insert({
-                sender_id: ccsUserId(),
-                recipient_id: recipient,
-                body
-            });
-
-        if (result.error) {
-            ccsStatus(
-                "messageStatus",
-                "Message failed: " + result.error.message,
-                true
-            );
-            return;
-        }
-
-        bodyInput.value = "";
-
-        ccsStatus("messageStatus", "Message sent successfully!");
-
-        await window.loadPrivateMessages();
-    };
-
-    window.loadPrivateMessages = async function () {
-        if (!ccsRequireLogin()) return;
-
-        const container = ccsElement("privateMessagesList");
-        if (!container) return;
-
-        const recipient = ccsElement("messageRecipient")?.value;
-
-        container.replaceChildren();
-
-        if (!recipient) {
-            container.appendChild(
-                ccsMake(
-                    "p",
-                    "Choose a member above to view your conversation."
-                )
-            );
-            return;
-        }
-
-        const db = ccsDb();
-        const myId = ccsUserId();
-
-        const result = await db
-            .from("private_messages")
-            .select("*")
-            .or(
-                "and(sender_id.eq." + myId +
-                ",recipient_id.eq." + recipient +
-                ")," +
-                "and(sender_id.eq." + recipient +
-                ",recipient_id.eq." + myId + ")"
-            )
-            .order("created_at", { ascending: true })
-            .limit(500);
-
-        if (result.error) {
-            container.appendChild(
-                ccsMake(
-                    "p",
-                    "Unable to load messages. Check your Supabase policies."
-                )
-            );
-
-            console.error("Private messages:", result.error);
-            return;
-        }
-
-        const messages = result.data || [];
-
-        if (!messages.length) {
-            container.appendChild(
-                ccsMake("p", "No messages yet. Start the conversation!")
-            );
-            return;
-        }
-
-        for (const message of messages) {
-            const mine = message.sender_id === myId;
-
-            const card = ccsMake(
-                "div",
-                null,
-                "private-message"
-            );
-
-            card.appendChild(
-                ccsMake(
-                    "h4",
-                    mine ? "You" : "Member"
-                )
-            );
-
-            card.appendChild(
-                ccsMake("p", message.body || "")
-            );
-
-            card.appendChild(
-                ccsMake("small", ccsDate(message.created_at))
-            );
-
-            container.appendChild(card);
-        }
-
-        const unreadIds = messages
-            .filter(message =>
-                message.recipient_id === myId &&
-                !message.read_at
-            )
-            .map(message => message.id);
-
-        if (unreadIds.length) {
-            const updateResult = await db
-                .from("private_messages")
-                .update({ read_at: new Date().toISOString() })
-                .in("id", unreadIds);
-
-            if (updateResult.error) {
-                console.warn(
-                    "Could not mark messages as read:",
-                    updateResult.error
-                );
-            }
-        }
-
-        container.scrollTop = container.scrollHeight;
-    };
-
-    /* =========================================
-       AUTOMATIC REFRESH WHEN RECIPIENT CHANGES
-    ========================================= */
-
-    document.addEventListener("DOMContentLoaded", function () {
-        const recipient = ccsElement("messageRecipient");
-
-        if (recipient) {
-            recipient.addEventListener("change", function () {
-                window.loadPrivateMessages();
-            });
-        }
-
-        const whatsapp = ccsElement("whatsappGroupLink");
-
-        if (whatsapp) {
-            whatsapp.href = CCS_WHATSAPP_LINK;
-            whatsapp.target = "_blank";
-            whatsapp.rel = "noopener noreferrer";
-        }
-
-        console.log("CCS VSN30 new features loaded.");
-    });
-
-})();
-/* =========================================================
-CCS VSN30 — COMMUNITY, GROUP CHAT & REPORTS PATCH
-Preserves the existing Supabase connection and design.
-========================================================= */
-
-(function () {
-"use strict";
-
-console.log("CCS VSN30 community and reports patch loaded.");
-
-/* ---------- SHARED HELPERS ---------- */
-
-function ccsPatchDb() {
-    return window.supabaseClient ||
-        (typeof supabaseClient !== "undefined"
-            ? supabaseClient
-            : null);
-}
-
-function ccsPatchProfile() {
-    return window.currentProfile ||
-        (typeof currentProfile !== "undefined"
-            ? currentProfile
-            : null);
-}
-
-function ccsEscape(value) {
-    return String(value ?? "").replace(/[&<>"']/g, function (char) {
-        return {
-            "&": "&amp;",
-            "<": "&lt;",
-            ">": "&gt;",
-            '"': "&quot;",
-            "'": "&#39;"
-        }[char];
-    });
-}
-
-function ccsStatus(id, message, isError) {
-    const element = document.getElementById(id);
-    if (!element) return;
-
-    element.textContent = message;
-    element.style.color = isError ? "#ff7777" : "#38c98a";
-}
-
-function ccsFormatMoney(value) {
-    return Number(value || 0).toLocaleString("en-KE", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-    });
-}
-
-/* ---------- COMMUNITY NAVIGATION ---------- */
-
-window.openCommunity = function () {
-    const community = document.querySelector(".community-screen");
-
-    if (community) {
-        community.classList.add("community-open");
-        community.setAttribute("aria-hidden", "false");
-    }
-
-    if (typeof window.loadGroupChat === "function") {
-        window.loadGroupChat();
-    }
-};
-
-window.closeCommunity = function () {
-    const community = document.querySelector(".community-screen");
-
-    if (community) {
-        community.classList.remove("community-open");
-        community.setAttribute("aria-hidden", "true");
-    }
-};
-
-window.openCommunityTab = function (tab) {
-    const community = document.querySelector(".community-screen");
-
-    if (community) {
-        community.classList.add("community-open");
-    }
-
-    const groupTab = document.getElementById("groupChatTab");
-    const discussionTab = document.getElementById("discussionsTab");
-
-    const groupContent = document.getElementById("groupChatContent");
-    const discussionContent = document.getElementById("discussionsContent");
-
-    const wantsGroup = /group|chat/i.test(String(tab || ""));
-
-    if (groupContent) {
-        groupContent.style.display = wantsGroup ? "block" : "none";
-    }
-
-    if (discussionContent) {
-        discussionContent.style.display = wantsGroup ? "none" : "block";
-    }
-
-    if (groupTab) {
-        groupTab.classList.toggle("active", wantsGroup);
-    }
-
-    if (discussionTab) {
-        discussionTab.classList.toggle("active", !wantsGroup);
-    }
-
-    if (wantsGroup && typeof window.loadGroupChat === "function") {
-        window.loadGroupChat();
-    }
-
-    if (!wantsGroup && typeof window.loadForum === "function") {
-        window.loadForum();
-    }
-};
-
-/* ---------- GROUP CHAT ---------- */
-
-let groupChatLoading = false;
-let groupChatTimer = null;
-
-window.loadGroupChat = async function () {
-    if (groupChatLoading) return;
-
-    const db = ccsPatchDb();
-    const profile = ccsPatchProfile();
-    const container = document.getElementById("groupChatMessages");
-
-    if (!db || !profile || !container) return;
-
-    groupChatLoading = true;
-
-    try {
-        const { data: messages, error } = await db
-            .from("group_chat_messages")
-            .select("id,user_id,body,created_at")
-            .order("created_at", { ascending: true })
-            .limit(200);
-
-        if (error) throw error;
-
-        const userIds = [...new Set(
-            (messages || []).map(message => message.user_id).filter(Boolean)
-        )];
-
-        let profilesById = {};
-
-        if (userIds.length) {
-            const { data: profiles, error: profilesError } = await db
-                .from("profiles")
-                .select("id,full_name,role")
-                .in("id", userIds);
-
-            if (profilesError) {
-                console.warn("Could not load chat member names:", profilesError.message);
-            } else {
-                (profiles || []).forEach(member => {
-                    profilesById[member.id] = member;
-                });
-            }
-        }
-
-        if (!messages || messages.length === 0) {
-            container.innerHTML =
-                '<p class="chat-empty">No messages yet. Start the conversation!</p>';
-            return;
-        }
-
-        container.innerHTML = messages.map(message => {
-            const sender = profilesById[message.user_id] || {};
-            const ownMessage = message.user_id === profile.id;
-
-            const time = message.created_at
-                ? new Date(message.created_at).toLocaleString("en-KE", {
-                    dateStyle: "short",
-                    timeStyle: "short"
-                })
-                : "";
-
-            return `
-                <div class="chat-message ${ownMessage ? "own-message" : ""}">
-                    <div class="chat-message-header">
-                        <strong>${ccsEscape(
-                            ownMessage ? "You" : (sender.full_name || "Member")
-                        )}</strong>
-                        <small>${ccsEscape(time)}</small>
-                    </div>
-                    <div class="chat-message-body">${ccsEscape(message.body)}</div>
-                </div>
-            `;
-        }).join("");
-
-        container.scrollTop = container.scrollHeight;
-
-    } catch (error) {
-        console.error("Group chat loading failed:", error);
-        ccsStatus(
-            "groupChatStatus",
-            "Could not load messages. Check your connection and chat-table permissions.",
-            true
-        );
-    } finally {
-        groupChatLoading = false;
-    }
-};
-
-window.sendGroupChatMessage = async function () {
-    const db = ccsPatchDb();
-    const profile = ccsPatchProfile();
-    const input = document.getElementById("groupChatInput");
-
-    if (!db || !profile) {
-        ccsStatus("groupChatStatus", "Please log in before sending messages.", true);
-        return;
-    }
-
-    if (!input) {
-        console.error("Missing HTML element: groupChatInput");
-        return;
-    }
-
-    const body = input.value.trim();
-
-    if (!body) {
-        ccsStatus("groupChatStatus", "Type a message first.", true);
-        return;
-    }
-
-    if (body.length > 2000) {
-        ccsStatus("groupChatStatus", "Messages must be 2,000 characters or fewer.", true);
-        return;
-    }
-
-    const sendButton = document.querySelector(
-        '[onclick*="sendGroupChatMessage"]'
-    );
-
-    if (sendButton) sendButton.disabled = true;
-
-    try {
-        const { error } = await db
-            .from("group_chat_messages")
-            .insert({
-                user_id: profile.id,
-                body: body
-            });
-
-        if (error) throw error;
-
-        input.value = "";
-        ccsStatus("groupChatStatus", "Message sent.", false);
-
-        await window.loadGroupChat();
-
-    } catch (error) {
-        console.error("Sending group chat message failed:", error);
-
-        ccsStatus(
-            "groupChatStatus",
-            "Message was not sent. Check the group_chat_messages table and its RLS policies.",
-            true
-        );
-    } finally {
-        if (sendButton) sendButton.disabled = false;
-    }
-};
-
-/* Refresh messages periodically while the page is visible. */
-
-function startGroupChatRefresh() {
-    if (groupChatTimer) clearInterval(groupChatTimer);
-
-    groupChatTimer = setInterval(function () {
-        const community = document.querySelector(".community-screen");
-
-        if (
-            document.visibilityState === "visible" &&
-            community &&
-            community.classList.contains("community-open")
-        ) {
-            window.loadGroupChat();
-        }
-    }, 15000);
-}
-
-startGroupChatRefresh();
-
-/* ---------- FINANCIAL REPORTS ---------- */
-
-window.loadReports = async function () {
-    const db = ccsPatchDb();
-
-    if (!db) {
-        console.error("Supabase is not initialized.");
-        return;
-    }
-
-    const contributionElement = document.getElementById("reportContributions");
-    const withdrawalElement = document.getElementById("reportWithdrawals");
-
-    if (contributionElement) contributionElement.textContent = "Loading...";
-    if (withdrawalElement) withdrawalElement.textContent = "Loading...";
-
-    try {
-        const [contributionResult, withdrawalResult] = await Promise.all([
-            db.from("contributions")
-                .select("id,user_id,amount_paid,status,created_at")
-                .limit(5000),
-
-            db.from("withdrawals")
-                .select("id,requested_by,amount,status,created_at")
-                .limit(5000)
-        ]);
-
-        if (contributionResult.error) throw contributionResult.error;
-        if (withdrawalResult.error) throw withdrawalResult.error;
-
-        const contributions = contributionResult.data || [];
-        const withdrawals = withdrawalResult.data || [];
-
-        const totalContributions = contributions.reduce((sum, item) => {
-            return sum + Math.max(0, Number(item.amount_paid) || 0);
-        }, 0);
-
-        const successfulStatuses = [
-            "approved",
-            "completed",
-            "paid",
-            "successful"
-        ];
-
-        const approvedWithdrawals = withdrawals.filter(item =>
-            successfulStatuses.includes(
-                String(item.status || "").toLowerCase()
-            )
-        );
-
-        const totalWithdrawals = approvedWithdrawals.reduce((sum, item) => {
-            return sum + Math.max(0, Number(item.amount) || 0);
-        }, 0);
-
-        if (contributionElement) {
-            contributionElement.textContent =
-                "KSh " + ccsFormatMoney(totalContributions);
-        }
-
-        if (withdrawalElement) {
-            withdrawalElement.textContent =
-                "KSh " + ccsFormatMoney(totalWithdrawals);
-        }
-
-        /* Update charts only when the existing canvases are available. */
-
-        const contributionCanvas = document.getElementById("contributionsChart");
-        const withdrawalCanvas = document.getElementById("withdrawalsChart");
-
-        if (typeof window.Chart !== "undefined") {
-            const monthlyTotals = function (rows, amountField) {
-                const totals = {};
-
-                rows.forEach(row => {
-                    if (!row.created_at) return;
-
-                    const date = new Date(row.created_at);
-                    if (Number.isNaN(date.getTime())) return;
-
-                    const key =
-                        date.getFullYear() + "-" +
-                        String(date.getMonth() + 1).padStart(2, "0");
-
-                    totals[key] = (totals[key] || 0) +
-                        Math.max(0, Number(row[amountField]) || 0);
-                });
-
-                const keys = Object.keys(totals).sort();
-
-                return {
-                    labels: keys,
-                    values: keys.map(key => totals[key])
-                };
-            };
-
-            function updateChart(canvas, chartKey, rows, amountField) {
-                if (!canvas) return;
-
-                const totals = monthlyTotals(rows, amountField);
-
-                if (window[chartKey]) {
-                    window[chartKey].destroy();
-                }
-
-                window[chartKey] = new window.Chart(canvas, {
-                    type: "bar",
-                    data: {
-                        labels: totals.labels,
-                        datasets: [{
-                            label: "Amount (KSh)",
-                            data: totals.values
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        scales: {
-                            y: {
-                                beginAtZero: true
-                            }
-                        }
-                    }
-                });
-            }
-
-            updateChart(
-                contributionCanvas,
-                "ccsContributionsReportChart",
-                contributions,
-                "amount_paid"
-            );
-
-            updateChart(
-                withdrawalCanvas,
-                "ccsWithdrawalsReportChart",
-                approvedWithdrawals,
-                "amount"
-            );
-        }
-
-        if (typeof window.loadMemberPerformance === "function") {
-            await window.loadMemberPerformance(contributions);
-        }
-
-    } catch (error) {
-        console.error("Financial reports failed:", error);
-
-        if (contributionElement) {
-            contributionElement.textContent = "Unable to load";
-        }
-
-        if (withdrawalElement) {
-            withdrawalElement.textContent = "Unable to load";
-        }
-
-        alert(
-            "Reports could not be loaded. Check the browser console and Supabase permissions."
-        );
-    }
-};
-
-})();
-/* =====================================================
-   CCS VSN30 — GROUP CHAT DASHBOARD
-   Reply • Edit Own Messages • Resubmit • Edited Label
-===================================================== */
-
-(function () {
-    "use strict";
-
-    let replyToMessage = null;
-    let editingChatMessage = null;
-    let chatRequestInProgress = false;
-
-    function chatDb() {
-        return window.supabaseClient ||
-            (typeof supabaseClient !== "undefined"
-                ? supabaseClient
-                : null);
-    }
-
-    function chatProfile() {
-        return window.currentProfile ||
-            (typeof currentProfile !== "undefined"
-                ? currentProfile
-                : null);
-    }
-
-    function chatElement(id) {
-        return document.getElementById(id);
-    }
-
-    function chatStatus(message, isError) {
-        const element = chatElement("groupChatStatus");
-
-        if (!element) return;
-
-        element.textContent = message;
-
-        element.style.color = isError
-            ? "#ff7777"
-            : "#5bdcff";
-    }
-
-    function chatEscape(value) {
-        return String(value ?? "").replace(
-            /[&<>"']/g,
-            function (character) {
-                return {
-                    "&": "&amp;",
-                    "<": "&lt;",
-                    ">": "&gt;",
-                    '"': "&quot;",
-                    "'": "&#39;"
-                }[character];
-            }
-        );
-    }
-
-    function chatDate(value) {
-        if (!value) return "";
-
-        const date = new Date(value);
-
-        if (Number.isNaN(date.getTime())) {
-            return "";
-        }
-
-        return date.toLocaleString("en-KE", {
-            dateStyle: "medium",
-            timeStyle: "short"
-        });
-    }
-
-    function requireChatLogin() {
-        if (!chatDb() || !chatProfile()?.id) {
-            chatStatus(
-                "Please log in before using Group Chat.",
-                true
-            );
-
-            return false;
-        }
-
-        return true;
-    }
-
-
-    /* =========================================
-       OPEN CHAT DASHBOARD
-    ========================================= */
-
-    window.openGroupChatDashboard = async function () {
-        if (!requireChatLogin()) return;
-
-        const dashboard = chatElement("chatDashboard");
-
-        if (!dashboard) {
-            alert("The Group Chat dashboard HTML is missing.");
-            return;
-        }
-
-        dashboard.classList.add("chat-dashboard-open");
-
-        dashboard.setAttribute("aria-hidden", "false");
-
-        document.body.classList.add("chat-dashboard-active");
-
-        await window.loadGroupChat();
-
-        const input = chatElement("groupChatInput");
-
-        if (input) {
-            input.focus();
-        }
-    };
-
-
-    /* =========================================
-       CLOSE CHAT DASHBOARD
-    ========================================= */
-
-    window.closeGroupChatDashboard = function () {
-        const dashboard = chatElement("chatDashboard");
-
-        if (dashboard) {
-            dashboard.classList.remove("chat-dashboard-open");
-
-            dashboard.setAttribute("aria-hidden", "true");
-        }
-
-        document.body.classList.remove("chat-dashboard-active");
-    };
-
-
-    /* =========================================
-       REPLY PREVIEW
-    ========================================= */
-
-    window.cancelChatReply = function () {
-        replyToMessage = null;
-
-        const preview = chatElement("chatReplyPreview");
-
-        if (preview) {
-            preview.style.display = "none";
-        }
-    };
-
-
-    function startChatReply(message) {
-        replyToMessage = message;
-
-        // Editing and replying are separate operations.
-        if (editingChatMessage) {
-            window.cancelChatEdit();
-        }
-
-        const preview = chatElement("chatReplyPreview");
-        const previewText = chatElement("chatReplyText");
-        const input = chatElement("groupChatInput");
-
-        if (preview) {
-            preview.style.display = "flex";
-        }
-
-        if (previewText) {
-            previewText.textContent =
-                (message.senderName || "Member") +
-                ": " +
-                (message.body || "");
-        }
-
-        if (input) {
-            input.focus();
-        }
-
-        chatStatus("Replying to selected message.", false);
-    }
-
-
-    /* =========================================
-       EDIT OWN MESSAGE
-    ========================================= */
-
-    window.startChatEdit = function (message) {
-        const profile = chatProfile();
-
-        if (!profile || message.user_id !== profile.id) {
-            chatStatus(
-                "You can only edit your own messages.",
-                true
-            );
-
-            return;
-        }
-
-        if (replyToMessage) {
-            window.cancelChatReply();
-        }
-
-        editingChatMessage = message;
-
-        const input = chatElement("groupChatInput");
-        const submitButton = chatElement("groupChatSubmitButton");
-        const cancelButton = chatElement("groupChatCancelEditButton");
-
-        if (input) {
-            input.value = message.body || "";
-            input.focus();
-        }
-
-        if (submitButton) {
-            submitButton.textContent = "Save Changes / Resubmit";
-        }
-
-        if (cancelButton) {
-            cancelButton.style.display = "inline-block";
-        }
-
-        chatStatus(
-            "Editing your message. Save Changes / Resubmit when ready.",
-            false
-        );
-    };
-
-
-    /* =========================================
-       CANCEL EDIT
-    ========================================= */
-
-    window.cancelChatEdit = function () {
-        editingChatMessage = null;
-
-        const input = chatElement("groupChatInput");
-        const submitButton = chatElement("groupChatSubmitButton");
-        const cancelButton = chatElement("groupChatCancelEditButton");
-
-        if (input) {
-            input.value = "";
-        }
-
-        if (submitButton) {
-            submitButton.textContent = "Send Message";
-        }
-
-        if (cancelButton) {
-            cancelButton.style.display = "none";
-        }
-
-        chatStatus("", false);
-    };
-
-
-    /* =========================================
-       LOAD GROUP CHAT
-    ========================================= */
-
-    window.loadGroupChat = async function () {
-        if (chatRequestInProgress) return;
-
-        if (!requireChatLogin()) return;
-
-        const db = chatDb();
-        const profile = chatProfile();
-        const container = chatElement("groupChatMessages");
-
-        if (!container) return;
-
-        chatRequestInProgress = true;
-
-        try {
-            const result = await db
-                .from("group_chat_messages")
-                .select(
-                    "id,user_id,body,created_at,reply_to_id,edited_at"
-                )
-                .order("created_at", {
-                    ascending: true
-                })
-                .limit(200);
-
-            if (result.error) {
-                throw result.error;
-            }
-
-            const messages = result.data || [];
-
-            const userIds = [
-                ...new Set(
-                    messages
-                        .map(message => message.user_id)
-                        .filter(Boolean)
-                )
-            ];
-
-            const profilesById = {};
-
-            if (userIds.length) {
-                const profileResult = await db
-                    .from("profiles")
-                    .select("id,full_name,role")
-                    .in("id", userIds);
-
-                if (profileResult.error) {
-                    throw profileResult.error;
-                }
-
-                (profileResult.data || []).forEach(member => {
-                    profilesById[member.id] = member;
-                });
-            }
-
-            const messagesById = {};
-
-            messages.forEach(message => {
-                messagesById[message.id] = message;
-            });
-
-            if (!messages.length) {
-                container.innerHTML =
-                    '<p class="chat-empty">' +
-                    'No messages yet. Start the conversation!' +
-                    '</p>';
-
-                chatStatus("", false);
-
-                return;
-            }
-
-            container.replaceChildren();
-
-            messages.forEach(message => {
-                const sender = profilesById[message.user_id] || {};
-
-                const ownMessage =
-                    message.user_id === profile.id;
-
-                const senderName = ownMessage
-                    ? "You"
-                    : (
-                        sender.full_name ||
-                        sender.role ||
-                        "Member"
-                    );
-
-                message.senderName = senderName;
-
-                const card = document.createElement("article");
-
-                card.className =
-                    "chat-message" +
-                    (ownMessage ? " own-message" : "");
-
-                card.dataset.messageId = message.id;
-
-
-                // Message header
-
-                const header = document.createElement("div");
-
-                header.className = "chat-message-header";
-
-                const author = document.createElement("strong");
-
-                author.className = "chat-message-author";
-
-                author.textContent = senderName;
-
-                const timestamp = document.createElement("small");
-
-                timestamp.textContent = chatDate(message.created_at);
-
-                header.append(author, timestamp);
-
-                card.appendChild(header);
-
-
-                // Referenced message, if this is a reply
-
-                if (message.reply_to_id) {
-                    const original =
-                        messagesById[message.reply_to_id];
-
-                    const replyBox = document.createElement("div");
-
-                    replyBox.className = "chat-reply-preview";
-
-                    replyBox.style.display = "block";
-
-                    const replyHeading =
-                        document.createElement("strong");
-
-                    replyHeading.textContent = original
-                        ? "Replying to " +
-                            (
-                                profilesById[original.user_id]?.full_name ||
-                                profilesById[original.user_id]?.role ||
-                                "Member"
-                            )
-                        : "Reply to an earlier message";
-
-                    const replyBody = document.createElement("p");
-
-                    replyBody.textContent = original
-                        ? original.body
-                        : "The original message is unavailable.";
-
-                    replyBox.append(replyHeading, replyBody);
-
-                    card.appendChild(replyBox);
-                }
-
-
-                // Message text
-
-                const body = document.createElement("div");
-
-                body.className = "chat-message-body";
-
-                body.textContent = message.body || "";
-
-                card.appendChild(body);
-
-
-                // Edited indicator
-
-                if (message.edited_at) {
-                    const edited = document.createElement("small");
-
-                    edited.className = "chat-message-edited";
-
-                    edited.textContent = "Edited";
-
-                    edited.title =
-                        "Last edited " + chatDate(message.edited_at);
-
-                    card.appendChild(edited);
-                }
-
-
-                // Actions
-
-                const actions = document.createElement("div");
-
-                actions.className = "chat-message-actions";
-
-                const replyButton = document.createElement("button");
-
-                replyButton.type = "button";
-
-                replyButton.className = "chat-reply-button";
-
-                replyButton.textContent = "↩ Reply";
-
-                replyButton.addEventListener("click", function () {
-                    startChatReply(message);
-                });
-
-                actions.appendChild(replyButton);
-
-
-                // Only the author gets the Edit button.
-
-                if (ownMessage) {
-                    const editButton = document.createElement("button");
-
-                    editButton.type = "button";
-
-                    editButton.className = "chat-edit-button";
-
-                    editButton.textContent = "✎ Edit";
-
-                    editButton.addEventListener("click", function () {
-                        window.startChatEdit(message);
-                    });
-
-                    actions.appendChild(editButton);
-                }
-
-                card.appendChild(actions);
-
-                container.appendChild(card);
-            });
-
-            container.scrollTop = container.scrollHeight;
-
-            chatStatus("", false);
-
-        } catch (error) {
-            console.error("Group Chat loading failed:", error);
-
-            chatStatus(
-                "Unable to load messages: " +
-                (error.message || "Check your connection and permissions."),
-                true
-            );
-
-        } finally {
-            chatRequestInProgress = false;
-        }
-    };
-
-
-    /* =========================================
-       SEND, REPLY OR SAVE EDIT
-    ========================================= */
-
-    window.sendGroupChatMessage = async function () {
-        if (!requireChatLogin()) return;
-
-        const db = chatDb();
-        const profile = chatProfile();
-        const input = chatElement("groupChatInput");
-        const submitButton = chatElement("groupChatSubmitButton");
-
-        if (!input) return;
-
-        const body = input.value.trim();
-
-        if (!body) {
-            chatStatus("Please type a message first.", true);
-            return;
-        }
-
-        if (body.length > 3000) {
-            chatStatus(
-                "Messages cannot exceed 3,000 characters.",
-                true
-            );
-
-            return;
-        }
-
-        if (submitButton) {
-            submitButton.disabled = true;
-        }
-
-        try {
-            /*
-             * EDIT EXISTING MESSAGE
-             */
-
-            if (editingChatMessage) {
-                const messageBeingEdited = editingChatMessage;
-
-                if (
-                    messageBeingEdited.user_id !== profile.id
-                ) {
-                    throw new Error(
-                        "You can only edit your own messages."
-                    );
-                }
-
-                const updateResult = await db
-                    .from("group_chat_messages")
-                    .update({
-                        body: body,
-                        edited_at: new Date().toISOString()
-                    })
-                    .eq("id", messageBeingEdited.id)
-                    .eq("user_id", profile.id)
-                    .select("id")
-                    .maybeSingle();
-
-                if (updateResult.error) {
-                    throw updateResult.error;
-                }
-
-                if (!updateResult.data) {
-                    throw new Error(
-                        "The message was not updated. Check your permissions."
-                    );
-                }
-
-                editingChatMessage = null;
-
-                input.value = "";
-
-                if (submitButton) {
-                    submitButton.textContent = "Send Message";
-                }
-
-                const cancelButton =
-                    chatElement("groupChatCancelEditButton");
-
-                if (cancelButton) {
-                    cancelButton.style.display = "none";
-                }
-
-                chatStatus(
-                    "Changes saved and message resubmitted successfully.",
-                    false
-                );
-
-                await window.loadGroupChat();
-
-                return;
-            }
-
-
-            /*
-             * SEND NEW MESSAGE OR REPLY
-             */
-
-            const newMessage = {
-                user_id: profile.id,
-                body: body
-            };
-
-            if (replyToMessage) {
-                newMessage.reply_to_id = replyToMessage.id;
-            }
-
-            const insertResult = await db
-                .from("group_chat_messages")
-                .insert(newMessage);
-
-            if (insertResult.error) {
-                throw insertResult.error;
-            }
-
-            input.value = "";
-
-            replyToMessage = null;
-
-            const preview = chatElement("chatReplyPreview");
-
-            if (preview) {
-                preview.style.display = "none";
-            }
-
-            chatStatus("Message sent successfully.", false);
-
-            await window.loadGroupChat();
-
-        } catch (error) {
-            console.error("Group Chat message operation failed:", error);
-
-            chatStatus(
-                "Operation failed: " +
-                (error.message || "Please try again."),
-                true
-            );
-
-        } finally {
-            if (submitButton) {
-                submitButton.disabled = false;
-            }
-        }
-    };
-
-
-    /* =========================================
-       CHAT REFRESH
-    ========================================= */
-
-    let refreshTimer = null;
-
-    function startChatRefresh() {
-        if (refreshTimer) {
-            clearInterval(refreshTimer);
-        }
-
-        refreshTimer = setInterval(function () {
-            const dashboard = chatElement("chatDashboard");
-
-            if (
-                document.visibilityState === "visible" &&
-                dashboard &&
-                dashboard.classList.contains("chat-dashboard-open")
-            ) {
-                window.loadGroupChat();
-            }
-        }, 15000);
-    }
-
-    startChatRefresh();
-
-
-    /* =========================================
-       KEYBOARD SHORTCUTS
-    ========================================= */
-
-    document.addEventListener("keydown", function (event) {
-        if (event.key === "Escape") {
-            const dashboard = chatElement("chatDashboard");
-
-            if (
-                dashboard &&
-                dashboard.classList.contains("chat-dashboard-open")
-            ) {
-                window.closeGroupChatDashboard();
-            }
-        }
-    });
-
-    console.log(
-        "CCS VSN30 Group Chat Dashboard features loaded."
-    );
-
-})();
-/* =====================================================
-   CCS VSN30
-   ANNOUNCEMENTS & NOTIFICATIONS
-   Uses forum_posts and announcement_reads
-===================================================== */
-
-(function () {
-    "use strict";
-
-    // Prevent this feature from being initialized twice.
-    if (window.ccsAnnouncementsInitialized) {
-        return;
-    }
-
-    window.ccsAnnouncementsInitialized = true;
-
-    const ANNOUNCEMENT_CATEGORIES = [
-        "Important Notice",
-        "Contributions",
-        "Meetings",
-        "Withdrawals",
-        "General Update"
-    ];
-
-    let announcementLoadInProgress = false;
-
-    // -------------------------------------------------
-    // CURRENT PROFILE
-    // -------------------------------------------------
-
-    function getAnnouncementProfile() {
-        if (
-            typeof currentProfile !== "undefined" &&
-            currentProfile
-        ) {
-            return currentProfile;
-        }
-
-        return window.currentProfile || null;
-    }
-
-    function getAnnouncementRole() {
-        const profile = getAnnouncementProfile();
-
-        return String(profile?.role || "")
-            .trim()
-            .toLowerCase();
-    }
-
-    function isAnnouncementAdmin() {
-        return getAnnouncementRole() === "admin";
-    }
-
-    function getAnnouncementUserId() {
-        const profile = getAnnouncementProfile();
-
-        return profile?.id || null;
-    }
-
-    // -------------------------------------------------
-    // ELEMENT HELPERS
-    // -------------------------------------------------
-
-    function announcementElement(id) {
-        return document.getElementById(id);
-    }
-
-    function setAnnouncementStatus(message, isError) {
-        const element = announcementElement(
-            "announcementPublishStatus"
-        );
-
-        if (!element) return;
-
-        element.textContent = message;
-
-        element.style.color = isError
-            ? "#ff8a8a"
-            : "#86efac";
-    }
-
-    function setUnreadAnnouncementCount(count) {
-        const badge = announcementElement(
-            "unreadAnnouncementCount"
-        );
-
-        if (!badge) return;
-
-        badge.textContent = String(count);
-
-        badge.style.display = count > 0
-            ? "inline-flex"
-            : "none";
-
-        badge.setAttribute(
-            "aria-label",
-            count + " unread announcements"
-        );
-    }
-
-    function escapeAnnouncementText(value) {
-        return String(value ?? "");
-    }
-
-    // -------------------------------------------------
-    // SHOW ADMIN FORM
-    // -------------------------------------------------
-
-    function updateAnnouncementPermissions() {
-        const adminForm = announcementElement(
-            "announcementAdminForm"
-        );
-
-        if (!adminForm) return;
-
-        adminForm.style.display = isAnnouncementAdmin()
-            ? "block"
-            : "none";
-    }
-
-    // -------------------------------------------------
-    // CREATE SAFE ANNOUNCEMENT ELEMENT
-    // -------------------------------------------------
-
-    function createAnnouncementCard(
-        announcement,
-        isRead
-    ) {
-        const card = document.createElement("article");
-
-        card.className = "announcement-item";
-
-        if (!isRead) {
-            card.classList.add("announcement-unread");
-        }
-
-        const heading = document.createElement("h4");
-
-        heading.textContent = escapeAnnouncementText(
-            announcement.title
-        );
-
-        const category = document.createElement("span");
-
-        category.className = "announcement-category";
-
-        category.textContent =
-            announcement.category || "General Update";
-
-        const date = document.createElement("p");
-
-        date.className = "announcement-date";
-
-        if (announcement.created_at) {
-            const parsedDate = new Date(
-                announcement.created_at
-            );
-
-            date.textContent = Number.isNaN(
-                parsedDate.getTime()
-            )
-                ? ""
-                : parsedDate.toLocaleString();
-        }
-
-        const body = document.createElement("p");
-
-        body.className = "announcement-body";
-
-        body.style.whiteSpace = "pre-wrap";
-
-        body.textContent = escapeAnnouncementText(
-            announcement.body
-        );
-
-        card.appendChild(category);
-        card.appendChild(heading);
-        card.appendChild(date);
-        card.appendChild(body);
-
-        if (!isRead) {
-            const readButton = document.createElement("button");
-
-            readButton.type = "button";
-
-            readButton.textContent = "Mark as Read";
-
-            readButton.addEventListener(
-                "click",
-                function () {
-                    markAnnouncementAsRead(
-                        announcement.id,
-                        card,
-                        readButton
-                    );
-                }
-            );
-
-            card.appendChild(readButton);
-        } else {
-            const readLabel = document.createElement("p");
-
-            readLabel.className = "announcement-read-label";
-
-            readLabel.textContent = "✓ Read";
-
-            card.appendChild(readLabel);
-        }
-
-        return card;
-    }
-
-    // -------------------------------------------------
-    // LOAD ANNOUNCEMENTS
-    // -------------------------------------------------
-
-    window.loadAnnouncements = async function () {
-        if (announcementLoadInProgress) return;
-
-        const list = announcementElement(
-            "announcementsList"
-        );
-
-        if (!list) return;
-
-        const profile = getAnnouncementProfile();
-        const userId = getAnnouncementUserId();
-
-        updateAnnouncementPermissions();
-
-        if (!profile || !userId) {
-            list.textContent =
-                "Please log in to view announcements.";
-
-            setUnreadAnnouncementCount(0);
-
-            return;
-        }
-
-        if (
-            typeof supabaseClient === "undefined" ||
-            !supabaseClient
-        ) {
-            list.textContent =
-                "The database connection is unavailable.";
-
-            return;
-        }
-
-        announcementLoadInProgress = true;
-
-        list.textContent = "Loading announcements...";
-
-        try {
-            const {
-                data: announcements,
-                error: announcementsError
-            } = await supabaseClient
-                .from("forum_posts")
-                .select(
-                    "id, user_id, title, body, category, created_at"
-                )
-                .eq("is_announcement", true)
-                .order("created_at", {
-                    ascending: false
-                });
-
-            if (announcementsError) {
-                throw announcementsError;
-            }
-
-            if (
-                !Array.isArray(announcements) ||
-                announcements.length === 0
-            ) {
-                list.textContent =
-                    "There are no announcements yet.";
-
-                setUnreadAnnouncementCount(0);
-
-                return;
-            }
-
-            const announcementIds = announcements.map(
-                item => item.id
-            );
-
-            const {
-                data: receipts,
-                error: receiptsError
-            } = await supabaseClient
-                .from("announcement_reads")
-                .select("announcement_id")
-                .eq("user_id", userId)
-                .in("announcement_id", announcementIds);
-
-            if (receiptsError) {
-                throw receiptsError;
-            }
-
-            const readIds = new Set(
-                (receipts || []).map(
-                    receipt => receipt.announcement_id
-                )
-            );
-
-            const unreadAnnouncements = announcements.filter(
-function (item) {
-return !readIds.has(item.id);
-}
-);
-
-        setUnreadAnnouncementCount(
-            unreadAnnouncements.length
-        );
-
-        list.replaceChildren();
-
-        if (unreadAnnouncements.length === 0) {
-            const message = document.createElement("p");
-
-            message.textContent =
-                "You're all caught up! No unread announcements.";
-
-            list.appendChild(message);
-        } else {
-            unreadAnnouncements.forEach(
-                function (announcement) {
-                    list.appendChild(
-                        createAnnouncementCard(
-                            announcement,
-                            false
-                        )
-                    );
-                }
-            );
-        }
-
-} catch (error) {
-console.error("CCS announcement loading error:", error);
-
-        list.textContent = "Could not load announcements: " + (error && error.message ? error.message : "Unknown error");
-
-    } finally {
-        announcementLoadInProgress = false;
-    }
-};
-
-    // -------------------------------------------------
-    // MARK ANNOUNCEMENT AS READ
-    // -------------------------------------------------
-window.markAnnouncementAsRead = async function (
-announcementId,
-card,
-button
-) {
-const userId = getAnnouncementUserId();
-
-if (!userId) {
-    alert("Please log in first.");
-    return;
-}
-
-if (!supabaseClient) {
-    alert("Database connection is unavailable.");
-    return;
-}
-
-if (button) {
-    button.disabled = true;
-    button.textContent = "Saving...";
-}
-
-try {
-    const { error } = await supabaseClient
-        .from("announcement_reads")
-        .insert({
-            announcement_id: announcementId,
-            user_id: userId
-        });
-
-    if (error && error.code !== "23505") {
-        throw error;
-    }
-
-    // Remove the announcement immediately from this member's list.
-    if (card) {
-        card.remove();
-    }
-
-    // Recalculate the unread count from the remaining cards.
-    const list = document.getElementById(
-        "announcementsList"
-    );
-
-    const remaining = list
-        ? list.querySelectorAll(
-            ".announcement-item.announcement-unread"
-        ).length
-        : 0;
-
-    setUnreadAnnouncementCount(remaining);
-
-    if (remaining === 0 && list) {
-        const message = document.createElement("p");
-
-        message.textContent =
-            "You're all caught up! No unread announcements.";
-
-        list.replaceChildren(message);
-    }
-
-} catch (error) {
-    console.error(
-        "Mark announcement as read error:",
-        error
-    );
-
-    alert(
-        "Could not mark this announcement as read: " +
-        (error.message || "Please try again.")
-    );
-
-    if (button) {
-        button.disabled = false;
-        button.textContent = "Mark as Read";
-    }
-}
-
-};
-    // -------------------------------------------------
-    // PUBLISH ANNOUNCEMENT
-    // -------------------------------------------------
-
-    window.publishAnnouncement = async function () {
-        if (!isAnnouncementAdmin()) {
-            setAnnouncementStatus(
-                "Only the Admin can publish announcements.",
-                true
-            );
-
-            return;
-        }
-
-        const profile = getAnnouncementProfile();
-
-        const userId = getAnnouncementUserId();
-
-        const title = (
-            announcementElement("announcementTitle")?.value ||
-            ""
-        ).trim();
-
-        const body = (
-            announcementElement("announcementBody")?.value ||
-            ""
-        ).trim();
-
-        const category = (
-            announcementElement("announcementCategory")?.value ||
-            "General Update"
-        ).trim();
-
-        if (!userId) {
-            setAnnouncementStatus(
-                "Your account profile could not be verified.",
-                true
-            );
-
-            return;
-        }
-
-        if (!title || !body) {
-            setAnnouncementStatus(
-                "Enter both an announcement title and message.",
-                true
-            );
-
-            return;
-        }
-
-        if (!ANNOUNCEMENT_CATEGORIES.includes(category)) {
-            setAnnouncementStatus(
-                "Please select a valid announcement category.",
-                true
-            );
-
-            return;
-        }
-
-        const publishButton = document.querySelector(
-            '#announcementAdminForm button[onclick="publishAnnouncement()"]'
-        );
-
-        if (publishButton) {
-            publishButton.disabled = true;
-            publishButton.textContent = "Publishing...";
-        }
-
-        setAnnouncementStatus(
-            "Publishing announcement...",
-            false
-        );
-
-        try {
-            const {
-                error
-            } = await supabaseClient
-                .from("forum_posts")
-                .insert({
-                    user_id: userId,
-                    title: title,
-                    body: body,
-                    category: category,
-                    is_announcement: true
-                });
-
-            if (error) {
-                throw error;
-            }
-
-            announcementElement(
-                "announcementTitle"
-            ).value = "";
-
-            announcementElement(
-                "announcementBody"
-            ).value = "";
-
-            setAnnouncementStatus(
-                "Announcement published successfully.",
-                false
-            );
-
-            await window.loadAnnouncements();
-
-        } catch (error) {
-            console.error(
-                "Publish announcement error:",
-                error
-            );
-
-            setAnnouncementStatus(
-                "Publishing failed. Check your Admin role and Supabase permissions.",
-                true
-            );
-
-        } finally {
-            if (publishButton) {
-                publishButton.disabled = false;
-                publishButton.textContent =
-                    "Publish Announcement";
-            }
-        }
-    };
-
-    // -------------------------------------------------
-    // AUTOMATIC DASHBOARD DETECTION
-    // -------------------------------------------------
-
-    function refreshAnnouncementDashboard() {
-        const dashboard = announcementElement(
-            "dashboardScreen"
-        );
-
-        if (!dashboard) return;
-
-        const isVisible =
-            dashboard.classList.contains("active");
-
-        if (isVisible && getAnnouncementProfile()) {
-            updateAnnouncementPermissions();
-
-            window.loadAnnouncements();
-        }
-    }
-
-    function initializeAnnouncements() {
-        updateAnnouncementPermissions();
-
-        refreshAnnouncementDashboard();
-
-        const dashboard = announcementElement(
-            "dashboardScreen"
-        );
-
-        if (dashboard) {
-            const observer = new MutationObserver(
-                function () {
-                    refreshAnnouncementDashboard();
-                }
-            );
-
-            observer.observe(dashboard, {
-                attributes: true,
-                attributeFilter: ["class", "style"]
-            });
-        }
-    }
-
-    if (document.readyState === "loading") {
-        document.addEventListener(
-            "DOMContentLoaded",
-            initializeAnnouncements
-        );
-    } else {
-        initializeAnnouncements();
-    }
-
-})();
-// ============================================================
-// CCS VSN30 — ADMIN ROLE MANAGEMENT
-// ============================================================
-
-window.loadRoleManagement = async function () {
-    const membersList = document.getElementById("roleMembersList");
-    const requestsList = document.getElementById("promotionRequestsList");
-    const memberSelect = document.getElementById("roleTargetMember");
-    const status = document.getElementById("roleManagementStatus");
-
-    if (!membersList || !requestsList || !memberSelect) {
-        console.error("Role management HTML elements were not found.");
-        return;
-    }
-
-    if (!supabaseClient) {
-        status.textContent = "Supabase connection is not ready.";
-        return;
-    }
-
-    membersList.textContent = "Loading members...";
-    requestsList.textContent = "Loading promotion requests...";
-
-    try {
-        const { data, error } = await supabaseClient.rpc(
-            "get_admin_role_management_data"
-        );
-
-        if (error) throw error;
-
-        if (!data || data.success !== true) {
-            throw new Error("Unable to load role-management data.");
-        }
-
-        const members = Array.isArray(data.members) ? data.members : [];
-        window.ccsRoleManagementMembers = members;
-        const requests = Array.isArray(data.requests) ? data.requests : [];
-
-        // Populate the member selector.
-        memberSelect.replaceChildren();
-
-        const placeholder = document.createElement("option");
-        placeholder.value = "";
-        placeholder.textContent = "Select a member";
-        memberSelect.appendChild(placeholder);
-
-        members
-            .filter(member => member.role !== "admin")
-            .forEach(member => {
-                const option = document.createElement("option");
-                option.value = member.id;
-
-                const inactiveText = member.is_active ? "" : " (Inactive)";
-                option.textContent =
-                    `${member.full_name || "Unnamed member"} — ` +
-                    `${member.role || "member"}${inactiveText}`;
-
-                memberSelect.appendChild(option);
-            });
-        window.showSelectedMemberDetails();
-
-        // Display current roles.
-        membersList.replaceChildren();
-
-        if (members.length === 0) {
-            membersList.textContent = "No members found.";
-        } else {
-            members.forEach(member => {
-                const card = document.createElement("div");
-                card.className = "dashboard-card";
-
-                const name = document.createElement("h4");
-                name.textContent = member.full_name || "Unnamed member";
-
-                const role = document.createElement("p");
-                role.textContent =
-                    "Role: " + (member.role || "member");
-
-                const phone = document.createElement("p");
-                phone.textContent =
-                    "Phone: " + (member.phone || "Not provided");
-
-                const active = document.createElement("p");
-                active.textContent = member.is_active
-                    ? "Account: Active"
-                    : "Account: Inactive";
-
-                card.append(name, role, phone, active);
-                membersList.appendChild(card);
-            });
-        }
-
-        // Display pending promotion requests.
-        requestsList.replaceChildren();
-
-        if (requests.length === 0) {
-            requestsList.textContent = "No pending promotion requests.";
-        } else {
-            requests.forEach(request => {
-                const card = document.createElement("div");
-                card.className = "dashboard-card";
-
-                const title = document.createElement("h4");
-                title.textContent =
-                    request.full_name || "Unnamed member";
-
-                const requestedRole = document.createElement("p");
-                requestedRole.textContent =
-                    "Requested role: " + request.requested_role;
-
-                const reason = document.createElement("p");
-                reason.textContent =
-                    "Reason: " + (request.reason || "No reason provided");
-
-                const created = document.createElement("p");
-                created.textContent =
-                    "Submitted: " +
-                    (request.created_at
-                        ? new Date(request.created_at).toLocaleString()
-                        : "Date unavailable");
-
-                const noteLabel = document.createElement("label");
-                noteLabel.textContent = "Admin review note";
-
-                const note = document.createElement("textarea");
-                note.placeholder = "Optional reason or feedback";
-                note.maxLength = 1000;
-
-                const approve = document.createElement("button");
-                approve.type = "button";
-                approve.textContent = "Approve";
-                approve.addEventListener("click", () => {
-                    window.reviewRolePromotion(
-                        request.id,
-                        "approved",
-                        note.value
-                    );
-                });
-
-                const reject = document.createElement("button");
-                reject.type = "button";
-                reject.textContent = "Reject";
-                reject.className = "secondary";
-                reject.addEventListener("click", () => {
-                    window.reviewRolePromotion(
-                        request.id,
-                        "rejected",
-                        note.value
-                    );
-                });
-
-                card.append(
-                    title,
-                    requestedRole,
-                    reason,
-                    created,
-                    noteLabel,
-                    note,
-                    approve,
-                    reject
-                );
-
-                requestsList.appendChild(card);
-            });
-        }
-
-        if (status) {
-            status.textContent = "Role management loaded successfully.";
-        }
-    } catch (error) {
-        console.error("Role management error:", error);
-
-        membersList.textContent = "Could not load member roles.";
-        requestsList.textContent = "Could not load promotion requests.";
-
-        if (status) {
-            status.textContent =
-                error.message || "Failed to load role management.";
-        }
-    }
-};
-
-
-// ============================================================
-// ASSIGN A MEMBER'S ROLE
-// ============================================================
-
-window.assignSelectedMemberRole = async function () {
-    const memberSelect = document.getElementById("roleTargetMember");
-    const roleSelect = document.getElementById("roleTargetValue");
-    const status = document.getElementById("roleAssignmentStatus");
-
-    const userId = memberSelect?.value;
-    const newRole = roleSelect?.value;
-
-    const allowedRoles = [
-        "member",
-        "treasurer",
-        "secretary",
-        "committee"
-    ];
-
-    if (!userId) {
-        status.textContent = "Please select a member.";
-        return;
-    }
-
-    if (!allowedRoles.includes(newRole)) {
-        status.textContent = "Please select a valid role.";
-        return;
-    }
-
-    if (!window.confirm(
-        `Assign the role "${newRole}" to the selected member?`
-    )) {
-        return;
-    }
-
-    status.textContent = "Updating member role...";
-
-    try {
-        const { data, error } = await supabaseClient.rpc(
-            "admin_assign_member_role",
-            {
-                p_user_id: userId,
-                p_new_role: newRole
-            }
-        );
-
-        if (error) throw error;
-
-        if (data && data.success === false) {
-            throw new Error(data.message || "Role assignment failed.");
-        }
-
-        status.textContent = "Member role updated successfully.";
-
-        await window.loadRoleManagement();
-    } catch (error) {
-        console.error("Role assignment error:", error);
-
-        status.textContent =
-            error.message || "Could not update the member role.";
-    }
-};
-
-
-// ============================================================
-// APPROVE OR REJECT PROMOTION REQUESTS
-// ============================================================
-
-window.reviewRolePromotion = async function (
-    requestId,
-    decision,
-    reviewNote
-) {
-    if (!["approved", "rejected"].includes(decision)) {
-        alert("Invalid review decision.");
-        return;
-    }
-
-    const action = decision === "approved" ? "approve" : "reject";
-
-    if (!window.confirm(`Are you sure you want to ${action} this request?`)) {
-        return;
-    }
-
-    const status = document.getElementById("roleManagementStatus");
-
-    if (status) {
-        status.textContent = `Processing ${action}...`;
-    }
-
-    try {
-        const { data, error } = await supabaseClient.rpc(
-            "review_promotion_request",
-            {
-                p_request_id: requestId,
-                p_decision: decision,
-                p_review_note: (reviewNote || "").trim() || null
-            }
-        );
-
-        if (error) throw error;
-
-        if (data && data.success === false) {
-            throw new Error(data.message || "Request review failed.");
-        }
-
-        if (status) {
-            status.textContent =
-                `Promotion request ${decision} successfully.`;
-        }
-
-        await window.loadRoleManagement();
-    } catch (error) {
-        console.error("Promotion review error:", error);
-
-        if (status) {
-            status.textContent =
-                error.message || "Could not review the promotion request.";
-        }
-    }
-};
-
-console.log("CCS VSN30 Admin Role Management loaded.");
-// ============================================================
-// CCS VSN30 — SELECTED MEMBER DETAILS
-// ============================================================
-
-window.showSelectedMemberDetails = function () {
-    const selector = document.getElementById("roleTargetMember");
-    const details = document.getElementById("selectedMemberDetails");
-
-    if (!selector || !details) return;
-
-    const selectedId = selector.value;
-
-    if (!selectedId) {
-        details.replaceChildren();
-
-        const message = document.createElement("p");
-        message.textContent =
-            "Select a member to view their details before assigning a role.";
-
-        details.appendChild(message);
-        return;
-    }
-
-    const member = window.ccsRoleManagementMembers?.find(
-        item => String(item.id) === String(selectedId)
-    );
-
-    if (!member) {
-        details.textContent =
-            "Member details are unavailable. Refresh role management.";
-        return;
-    }
-
-    details.replaceChildren();
-
-    const heading = document.createElement("h4");
-    heading.textContent = "Member Information";
-    details.appendChild(heading);
-
-    const fields = [
-        ["Full Name", member.full_name],
-        ["Phone Number", member.phone],
-        ["Current Role", member.role],
-        ["Account Status", member.is_active ? "Active" : "Inactive"],
-        ["Member ID", member.id]
-    ];
-
-    fields.forEach(([label, value]) => {
-        const paragraph = document.createElement("p");
-        const strong = document.createElement("strong");
-
-        strong.textContent = label + ": ";
-        paragraph.appendChild(strong);
-        paragraph.appendChild(
-            document.createTextNode(
-                value === null || value === undefined || value === ""
-                    ? "Not available"
-                    : String(value)
-            )
-        );
-
-        details.appendChild(paragraph);
-    });
-
-    const warning = document.createElement("p");
-    warning.textContent =
-        "Confirm that these details identify the correct member before assigning a role.";
-
-    details.appendChild(warning);
-};
